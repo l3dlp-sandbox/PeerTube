@@ -13,7 +13,7 @@
      [https://certbot.eff.org/all-instructions](https://certbot.eff.org/all-instructions)
   4. Install NodeJS 8.x (current LTS):
      [https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions](https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions)
-  5. Install yarn:
+  5. Install yarn, and be sure to have a recent version (>= 1.5.1, the latest release):
      [https://yarnpkg.com/en/docs/install#linux-tab](https://yarnpkg.com/en/docs/install#linux-tab)
   6. Run:
 
@@ -36,7 +36,7 @@ $ sudo apt install ffmpeg
   1. Run:
 
 ```
-$ sudo pacman -S nodejs yarn ffmpeg postgresql openssl redis git wget unzip python2 base-devel npm nginx
+$ sudo pacman -S nodejs-lts-carbon yarn ffmpeg postgresql openssl redis git wget unzip python2 base-devel npm nginx
 ```
 
 ## CentOS 7
@@ -66,29 +66,14 @@ $ sudo scl devtoolset-6 bash
 
 On a fresh install of [FreeBSD](https://www.freebsd.org), new system or new jail:
 
-  1. edit `/etc/pkg/FreeBSD.conf` to use latest instead quaterly (installation was tested with the latest repository), as root:
-```
-# ee /etc/pkg/FreeBSD.conf
-```
-
-     change this line (11):
-```
-  url: "pkg+http://pkg.FreeBSD.org/${ABI}/quaterly",
-```
-
-     to:
-```
-  url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest",
-```
-
-  2. bootsrap pkg, initialize db and install peertube's dependencies, always as root (sudo not yet installed):
+  1. bootstrap pkg, initialize db and install peertube's dependencies, always as root (sudo not yet installed):
 ```
 # pkg
 # pkg update
 # pkg install -y sudo bash wget git python nginx pkgconf vips postgresql96-server redis openssl node npm yarn ffmpeg unzip
 ```
 
-  3. Allow users in the wheel group (hope you don't forgot to add your user on wheel group!) to use sudo
+  2. Allow users in the wheel group (hope you don't forgot to add your user on wheel group!) to use sudo
 ```
 # visudo
 ```
@@ -98,7 +83,7 @@ On a fresh install of [FreeBSD](https://www.freebsd.org), new system or new jail
 %wheel ALL=(ALL) ALL
 ```
 
-  4. Enable nginx, redis, postgresql services and initialize database
+  3. Enable nginx, redis, postgresql services and initialize database
 ```
 # ee /etc/rc.conf
 ```
@@ -118,6 +103,19 @@ nginx_enable="YES"
 # service nginx start
 ```
 
+## macOS
+* Add the packages:
+
+	```
+	brew install ffmpeg nginx postgresql openssl gcc make redis git yarn
+	```
+* Run the services:
+
+   ```
+   brew services run postgresql
+   brew services run redis
+   ```
+   
 ## Other distributions
 
 Feel free to update this file in a pull request!

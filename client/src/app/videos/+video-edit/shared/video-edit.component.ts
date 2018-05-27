@@ -3,7 +3,6 @@ import { FormBuilder, FormControl, FormGroup } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { VIDEO_IMAGE, VIDEO_SUPPORT } from '@app/shared'
 import { NotificationsService } from 'angular2-notifications'
-import 'rxjs/add/observable/forkJoin'
 import { ServerService } from '../../../core/server'
 import { VIDEO_CHANNEL } from '../../../shared/forms/form-validators'
 import { ValidatorMessage } from '../../../shared/forms/form-validators/validator-message'
@@ -31,7 +30,6 @@ export class VideoEditComponent implements OnInit {
   @Input() videoPrivacies = []
   @Input() userVideoChannels = []
 
-  tags: string[] = []
   videoCategories = []
   videoLicences = []
   videoLanguages = []
@@ -75,14 +73,14 @@ export class VideoEditComponent implements OnInit {
 
     this.form.addControl('name', new FormControl('', VIDEO_NAME.VALIDATORS))
     this.form.addControl('privacy', new FormControl('', VIDEO_PRIVACY.VALIDATORS))
-    this.form.addControl('channelId', new FormControl({ value: '', disabled: true }))
+    this.form.addControl('channelId', new FormControl('', VIDEO_CHANNEL.VALIDATORS))
     this.form.addControl('nsfw', new FormControl(false))
     this.form.addControl('commentsEnabled', new FormControl(true))
     this.form.addControl('category', new FormControl('', VIDEO_CATEGORY.VALIDATORS))
     this.form.addControl('licence', new FormControl('', VIDEO_LICENCE.VALIDATORS))
     this.form.addControl('language', new FormControl('', VIDEO_LANGUAGE.VALIDATORS))
     this.form.addControl('description', new FormControl('', VIDEO_DESCRIPTION.VALIDATORS))
-    this.form.addControl('tags', new FormControl(''))
+    this.form.addControl('tags', new FormControl([]))
     this.form.addControl('thumbnailfile', new FormControl(''))
     this.form.addControl('previewfile', new FormControl(''))
     this.form.addControl('support', new FormControl('', VIDEO_SUPPORT.VALIDATORS))

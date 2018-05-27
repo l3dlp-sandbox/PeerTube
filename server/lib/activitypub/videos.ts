@@ -5,7 +5,7 @@ import * as request from 'request'
 import { ActivityIconObject } from '../../../shared/index'
 import { VideoTorrentObject } from '../../../shared/models/activitypub/objects'
 import { VideoPrivacy, VideoRateType } from '../../../shared/models/videos'
-import { isVideoTorrentObjectValid } from '../../helpers/custom-validators/activitypub/videos'
+import { sanitizeAndCheckVideoTorrentObject } from '../../helpers/custom-validators/activitypub/videos'
 import { isVideoFileInfoHashValid } from '../../helpers/custom-validators/videos'
 import { retryTransactionWrapper } from '../../helpers/database-utils'
 import { logger } from '../../helpers/logger'
@@ -58,19 +58,19 @@ async function videoActivityObjectToDBAttributes (videoChannel: VideoChannelMode
                                                   videoObject: VideoTorrentObject,
                                                   to: string[] = []) {
   const privacy = to.indexOf(ACTIVITY_PUB.PUBLIC) !== -1 ? VideoPrivacy.PUBLIC : VideoPrivacy.UNLISTED
-
   const duration = videoObject.duration.replace(/[^\d]+/, '')
-  let language = null
+
+  let language: string = null
   if (videoObject.language) {
-    language = parseInt(videoObject.language.identifier, 10)
+    language = videoObject.language.identifier
   }
 
-  let category = null
+  let category: number = null
   if (videoObject.category) {
     category = parseInt(videoObject.category.identifier, 10)
   }
 
-  let licence = null
+  let licence: number = null
   if (videoObject.licence) {
     licence = parseInt(videoObject.licence.identifier, 10)
   }
@@ -137,6 +137,13 @@ function videoFileActivityUrlToDBAttributes (videoCreated: VideoModel, videoObje
   return attributes
 }
 
+function getOrCreateVideoChannel (videoObject: VideoTorrentObject) {
+  const channel = videoObject.attributedTo.find(a => a.type === 'Group')
+  if (!channel) throw new Error('Cannot find associated video channel to video ' + videoObject.url)
+
+  return getOrCreateActorAndServerAndModel(channel.id)
+}
+
 async function getOrCreateVideo (videoObject: VideoTorrentObject, channelActor: ActorModel) {
   logger.debug('Adding remote video %s.', videoObject.id)
 
@@ -199,10 +206,7 @@ async function getOrCreateAccountAndVideoAndChannel (videoObject: VideoTorrentOb
     actor = await getOrCreateActorAndServerAndModel(actorObj.id)
   }
 
-  const channel = videoObject.attributedTo.find(a => a.type === 'Group')
-  if (!channel) throw new Error('Cannot find associated video channel to video ' + videoObject.url)
-
-  const channelActor = await getOrCreateActorAndServerAndModel(channel.id)
+  const channelActor = await getOrCreateVideoChannel(videoObject)
 
   const options = {
     arguments: [ videoObject, channelActor ],
@@ -301,7 +305,9 @@ export {
   videoActivityObjectToDBAttributes,
   videoFileActivityUrlToDBAttributes,
   getOrCreateVideo,
-  addVideoShares}
+  getOrCreateVideoChannel,
+  addVideoShares
+}
 
 // ---------------------------------------------------------------------------
 
@@ -317,7 +323,7 @@ async function fetchRemoteVideo (videoUrl: string): Promise<VideoTorrentObject> 
 
   const { body } = await doRequest(options)
 
-  if (isVideoTorrentObjectValid(body) === false) {
+  if (sanitizeAndCheckVideoTorrentObject(body) === false) {
     logger.debug('Remote video JSON is not valid.', { body })
     return undefined
   }

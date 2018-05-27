@@ -10,24 +10,29 @@ import { doRequestAndSaveToFile } from '../helpers/requests'
 import { CONSTRAINTS_FIELDS } from '../initializers'
 import { getClient, getVideoCategories, login, searchVideo, uploadVideo } from '../tests/utils'
 import { truncate } from 'lodash'
+import * as prompt from 'prompt'
 
 program
   .option('-u, --url <url>', 'Server url')
   .option('-U, --username <username>', 'Username')
   .option('-p, --password <token>', 'Password')
   .option('-t, --target-url <targetUrl>', 'Video target URL')
-  .option('-l, --language <languageCode>', 'Language code')
+  .option('-l, --language <languageCode>', 'Language ISO 639 code (fr or en...)')
   .option('-v, --verbose', 'Verbose mode')
   .parse(process.argv)
 
 if (
   !program['url'] ||
   !program['username'] ||
-  !program['password'] ||
   !program['targetUrl']
 ) {
   console.error('All arguments are required.')
   process.exit(-1)
+}
+
+const user = {
+  username: program['username'],
+  password: program['password']
 }
 
 run().catch(err => console.error(err))
@@ -35,17 +40,36 @@ run().catch(err => console.error(err))
 let accessToken: string
 let client: { id: string, secret: string }
 
-const user = {
-  username: program['username'],
-  password: program['password']
-}
-
 const processOptions = {
   cwd: __dirname,
   maxBuffer: Infinity
 }
 
+async function promptPassword () {
+  return new Promise((res, rej) => {
+    prompt.start()
+    const schema = {
+      properties: {
+        password: {
+          hidden: true,
+          required: true
+        }
+      }
+    }
+    prompt.get(schema, function (err, result) {
+      if (err) {
+        return rej(err)
+      }
+      return res(result.password)
+    })
+  })
+}
+
 async function run () {
+  if (!user.password) {
+    user.password = await promptPassword()
+  }
+
   const res = await getClient(program['url'])
   client = {
     id: res.body.client_id,
@@ -82,7 +106,7 @@ async function run () {
   })
 }
 
-function processVideo (info: any, languageCode: number) {
+function processVideo (info: any, languageCode: string) {
   return new Promise(async res => {
     if (program['verbose']) console.log('Fetching object.', info)
 
@@ -103,19 +127,25 @@ function processVideo (info: any, languageCode: number) {
     console.log('Downloading video "%s"...', videoInfo.title)
 
     const options = [ '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '-o', path ]
-    youtubeDL.exec(videoInfo.url, options, processOptions, async (err, output) => {
-      if (err) return console.error(err)
+    try {
+      youtubeDL.exec(videoInfo.url, options, processOptions, async (err, output) => {
+        if (err) {
+          console.error(err)
+          return res()
+        }
 
-      console.log(output.join('\n'))
-
-      await uploadVideoOnPeerTube(normalizeObject(videoInfo), path, languageCode)
-
+        console.log(output.join('\n'))
+        await uploadVideoOnPeerTube(normalizeObject(videoInfo), path, languageCode)
+        return res()
+      })
+    } catch (err) {
+      console.log(err.message)
       return res()
-    })
+    }
   })
 }
 
-async function uploadVideoOnPeerTube (videoInfo: any, videoPath: string, language?: number) {
+async function uploadVideoOnPeerTube (videoInfo: any, videoPath: string, language?: string) {
   const category = await getCategory(videoInfo.categories)
   const licence = getLicence(videoInfo.license)
   let tags = []

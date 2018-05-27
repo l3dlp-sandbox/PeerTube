@@ -7,7 +7,7 @@ import { UserCreate, UserRight, UserRole, UserUpdate, UserUpdateMe, UserVideoRat
 import { retryTransactionWrapper } from '../../helpers/database-utils'
 import { processImage } from '../../helpers/image-utils'
 import { logger } from '../../helpers/logger'
-import { createReqFiles, getFormattedObjects } from '../../helpers/utils'
+import { getFormattedObjects } from '../../helpers/utils'
 import { AVATARS_SIZE, CONFIG, IMAGE_MIMETYPE_EXT, RATES_LIMIT, sequelizeTypescript } from '../../initializers'
 import { updateActorAvatarInstance } from '../../lib/activitypub'
 import { sendUpdateActor } from '../../lib/activitypub/send'
@@ -19,6 +19,7 @@ import {
   authenticate,
   ensureUserHasRight,
   ensureUserRegistrationAllowed,
+  ensureUserRegistrationAllowedForIP,
   paginationValidator,
   setDefaultPagination,
   setDefaultSort,
@@ -42,6 +43,9 @@ import { AccountVideoRateModel } from '../../models/account/account-video-rate'
 import { UserModel } from '../../models/account/user'
 import { OAuthTokenModel } from '../../models/oauth/oauth-token'
 import { VideoModel } from '../../models/video/video'
+import { VideoSortField } from '../../../client/src/app/shared/video/sort-field.type'
+import { createReqFiles } from '../../helpers/express-utils'
+import { UserVideoQuota } from '../../../shared/models/users/user-video-quota.model'
 
 const reqAvatarFile = createReqFiles([ 'avatarfile' ], IMAGE_MIMETYPE_EXT, { avatarfile: CONFIG.STORAGE.AVATARS_DIR })
 const loginRateLimiter = new RateLimit({
@@ -88,6 +92,8 @@ usersRouter.get('/',
 )
 
 usersRouter.get('/:id',
+  authenticate,
+  ensureUserHasRight(UserRight.MANAGE_USERS),
   asyncMiddleware(usersGetValidator),
   getUser
 )
@@ -101,6 +107,7 @@ usersRouter.post('/',
 
 usersRouter.post('/register',
   asyncMiddleware(ensureUserRegistrationAllowed),
+  ensureUserRegistrationAllowedForIP,
   asyncMiddleware(usersRegisterValidator),
   asyncMiddleware(registerUserRetryWrapper)
 )
@@ -159,7 +166,13 @@ export {
 
 async function getUserVideos (req: express.Request, res: express.Response, next: express.NextFunction) {
   const user = res.locals.oauth.token.User as UserModel
-  const resultList = await VideoModel.listUserVideosForApi(user.id ,req.query.start, req.query.count, req.query.sort)
+  const resultList = await VideoModel.listAccountVideosForApi(
+    user.Account.id,
+    req.query.start as number,
+    req.query.count as number,
+    req.query.sort as VideoSortField,
+    false // Display my NSFW videos
+  )
 
   return res.json(getFormattedObjects(resultList.data, resultList.total))
 }
@@ -175,7 +188,10 @@ async function createUserRetryWrapper (req: express.Request, res: express.Respon
   return res.json({
     user: {
       id: user.id,
-      uuid: account.uuid
+      account: {
+        id: account.id,
+        uuid: account.Actor.uuid
+      }
     }
   }).end()
 }
@@ -186,7 +202,7 @@ async function createUser (req: express.Request) {
     username: body.username,
     password: body.password,
     email: body.email,
-    displayNSFW: false,
+    nsfwPolicy: CONFIG.INSTANCE.DEFAULT_NSFW_POLICY,
     autoPlayVideo: true,
     role: body.role,
     videoQuota: body.videoQuota
@@ -217,7 +233,7 @@ async function registerUser (req: express.Request) {
     username: body.username,
     password: body.password,
     email: body.email,
-    displayNSFW: false,
+    nsfwPolicy: CONFIG.INSTANCE.DEFAULT_NSFW_POLICY,
     autoPlayVideo: true,
     role: UserRole.USER,
     videoQuota: CONFIG.USER.VIDEO_QUOTA
@@ -240,9 +256,10 @@ async function getUserVideoQuotaUsed (req: express.Request, res: express.Respons
   const user = await UserModel.loadByUsernameAndPopulateChannels(res.locals.oauth.token.user.username)
   const videoQuotaUsed = await UserModel.getOriginalVideoFileTotalFromUser(user)
 
-  return res.json({
+  const data: UserVideoQuota = {
     videoQuotaUsed
-  })
+  }
+  return res.json(data)
 }
 
 function getUser (req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -284,12 +301,13 @@ async function updateMe (req: express.Request, res: express.Response, next: expr
 
   if (body.password !== undefined) user.password = body.password
   if (body.email !== undefined) user.email = body.email
-  if (body.displayNSFW !== undefined) user.displayNSFW = body.displayNSFW
+  if (body.nsfwPolicy !== undefined) user.nsfwPolicy = body.nsfwPolicy
   if (body.autoPlayVideo !== undefined) user.autoPlayVideo = body.autoPlayVideo
 
   await sequelizeTypescript.transaction(async t => {
     await user.save({ transaction: t })
 
+    if (body.displayName !== undefined) user.Account.name = body.displayName
     if (body.description !== undefined) user.Account.description = body.description
     await user.Account.save({ transaction: t })
 

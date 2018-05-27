@@ -1,7 +1,14 @@
+import * as express from 'express'
 import { createClient, RedisClient } from 'redis'
 import { logger } from '../helpers/logger'
 import { generateRandomString } from '../helpers/utils'
 import { CONFIG, USER_PASSWORD_RESET_LIFETIME, VIDEO_VIEW_LIFETIME } from '../initializers'
+
+type CachedRoute = {
+  body: string,
+  contentType?: string
+  statusCode?: string
+}
 
 class Redis {
 
@@ -19,7 +26,8 @@ class Redis {
 
     this.client = createClient({
       host: CONFIG.REDIS.HOSTNAME,
-      port: CONFIG.REDIS.PORT
+      port: CONFIG.REDIS.PORT,
+      db: CONFIG.REDIS.DB
     })
 
     this.client.on('error', err => {
@@ -54,6 +62,22 @@ class Redis {
     return this.exists(this.buildViewKey(ip, videoUUID))
   }
 
+  async getCachedRoute (req: express.Request) {
+    const cached = await this.getObject(this.buildCachedRouteKey(req))
+
+    return cached as CachedRoute
+  }
+
+  setCachedRoute (req: express.Request, body: any, lifetime: number, contentType?: string, statusCode?: number) {
+    const cached: CachedRoute = {
+      body: body.toString(),
+      contentType,
+      statusCode: statusCode.toString()
+    }
+
+    return this.setObject(this.buildCachedRouteKey(req), cached, lifetime)
+  }
+
   listJobs (jobsPrefix: string, state: string, mode: 'alpha', order: 'ASC' | 'DESC', offset: number, count: number) {
     return new Promise<string[]>((res, rej) => {
       this.client.sort(jobsPrefix + ':jobs:' + state, 'by', mode, order, 'LIMIT', offset.toString(), count.toString(), (err, values) => {
@@ -62,6 +86,18 @@ class Redis {
         return res(values)
       })
     })
+  }
+
+  generateResetPasswordKey (userId: number) {
+    return 'reset-password-' + userId
+  }
+
+  buildViewKey (ip: string, videoUUID: string) {
+    return videoUUID + '-' + ip
+  }
+
+  buildCachedRouteKey (req: express.Request) {
+    return req.method + '-' + req.originalUrl
   }
 
   private getValue (key: string) {
@@ -79,9 +115,35 @@ class Redis {
       this.client.set(this.prefix + key, value, 'PX', expirationMilliseconds, (err, ok) => {
         if (err) return rej(err)
 
-        if (ok !== 'OK') return rej(new Error('Redis result is not OK.'))
+        if (ok !== 'OK') return rej(new Error('Redis set result is not OK.'))
 
         return res()
+      })
+    })
+  }
+
+  private setObject (key: string, obj: { [ id: string ]: string }, expirationMilliseconds: number) {
+    return new Promise<void>((res, rej) => {
+      this.client.hmset(this.prefix + key, obj, (err, ok) => {
+        if (err) return rej(err)
+        if (!ok) return rej(new Error('Redis mset result is not OK.'))
+
+        this.client.pexpire(this.prefix + key, expirationMilliseconds, (err, ok) => {
+          if (err) return rej(err)
+          if (!ok) return rej(new Error('Redis expiration result is not OK.'))
+
+          return res()
+        })
+      })
+    })
+  }
+
+  private getObject (key: string) {
+    return new Promise<{ [ id: string ]: string }>((res, rej) => {
+      this.client.hgetall(this.prefix + key, (err, value) => {
+        if (err) return rej(err)
+
+        return res(value)
       })
     })
   }
@@ -94,14 +156,6 @@ class Redis {
         return res(existsNumber === 1)
       })
     })
-  }
-
-  private generateResetPasswordKey (userId: number) {
-    return 'reset-password-' + userId
-  }
-
-  private buildViewKey (ip: string, videoUUID: string) {
-    return videoUUID + '-' + ip
   }
 
   static get Instance () {

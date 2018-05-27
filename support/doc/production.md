@@ -5,11 +5,11 @@
 
 ## Installation
 
-**Please don't install PeerTube for production on a small device behind a low bandwidth connection (example: a Raspberry PI behind your ADSL link) because it could slow down the fediverse.**
+Please don't install PeerTube for production on a small device behind a low bandwidth connection (example: a Raspberry PI behind your ADSL link) because it could slow down the fediverse. See the [FAQ](https://github.com/Chocobozzz/PeerTube/blob/develop/FAQ.md#should-i-have-a-big-server-to-run-peertube) for more information.
 
 ### Dependencies
 
-Follow the steps of the [dependencies guide](dependencies.md).
+**Follow the steps of the [dependencies guide](dependencies.md).**
 
 ### PeerTube user
 
@@ -189,11 +189,18 @@ logs. You can set another password with:
 $ cd /var/www/peertube/peertube-latest && NODE_CONFIG_DIR=/var/www/peertube/config NODE_ENV=production npm run reset-password -- -u root
 ```
 
-Now you can subscribe to the mailing list for PeerTube administrators: https://framalistes.org/sympa/subscribe/peertube-admin
+### What now?
+
+Now your instance is up you can:
+ 
+ * Subscribe to the mailing list for PeerTube administrators: https://framalistes.org/sympa/subscribe/peertube-admin
+ * Add you instance to the public PeerTube instances index if you want to: https://instances.peertu.be/
 
 ## Upgrade
 
 #### Auto (minor versions only)
+
+The password it asks is PeerTube's database user password.
 
 ```
 $ cd /var/www/peertube/peertube-latest/scripts && sudo -u peertube ./upgrade.sh

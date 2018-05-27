@@ -1,10 +1,10 @@
 webserver:
-  hostname: "PEERTUBE_HOSTNAME"
+  hostname: "PEERTUBE_WEBSERVER_HOSTNAME"
   port:
-    __name: "PEERTUBE_PORT"
+    __name: "PEERTUBE_WEBSERVER_PORT"
     __format: "json"
   https:
-    __name: "PEERTUBE_HTTPS"
+    __name: "PEERTUBE_WEBSERVER_HTTPS"
     __format: "json"
 
 database:
@@ -43,7 +43,7 @@ signup:
     __name: "PEERTUBE_SIGNUP_ENABLED"
     __format: "json"
   limit:
-    __name: "PEETUBE_SIGNUP_LIMIT"
+    __name: "PEERTUBE_SIGNUP_LIMIT"
     __format: "json"
 
 transcoding:

@@ -1,9 +1,10 @@
 import { Component, OnDestroy, OnInit } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
+import { Location } from '@angular/common'
 import { RedirectService } from '@app/core'
 import { immutableAssign } from '@app/shared/misc/utils'
 import { NotificationsService } from 'angular2-notifications'
-import { Subscription } from 'rxjs/Subscription'
+import { Subscription } from 'rxjs'
 import { AuthService } from '../../core/auth'
 import { AbstractVideoList } from '../../shared/video/abstract-video-list'
 import { VideoService } from '../../shared/video/video.service'
@@ -27,6 +28,7 @@ export class VideoSearchComponent extends AbstractVideoList implements OnInit, O
                protected route: ActivatedRoute,
                protected notificationsService: NotificationsService,
                protected authService: AuthService,
+               protected location: Location,
                private videoService: VideoService,
                private redirectService: RedirectService
   ) {
@@ -60,5 +62,9 @@ export class VideoSearchComponent extends AbstractVideoList implements OnInit, O
   getVideosObservable (page: number) {
     const newPagination = immutableAssign(this.pagination, { currentPage: page })
     return this.videoService.searchVideos(this.otherRouteParams.search, newPagination, this.sort)
+  }
+
+  generateSyndicationList () {
+    throw new Error('Search does not support syndication.')
   }
 }

@@ -1,5 +1,104 @@
 # Changelog
 
+## v1.0.0-beta.6
+
+### Features
+
+ * Handle concurrent requests in cache middleware
+ * Add ability to enable registration by IP
+
+### Bug fixes
+
+ * Fix insane SQL request when loading all video attributes
+
+
+## v1.0.0-beta.5
+
+### BREAKING CHANGES
+
+ * Update Docker Compose (https://github.com/Chocobozzz/PeerTube/commit/fd5e57bbe2accbdb16b6aa65337c5ef44b5bd8fb)
+ * Rename client routes:
+   * `/admin/users/add` to `/admin/users/create`
+   * `/videos/edit/:uuid` to `/videos/update/:uuid`
+   * `/admin/users/:id/update` to `/admin/users/update/:id`
+
+
+### Features
+
+ * Adding basic helpers to guide users for comments/subscribe to accounts
+ * Add ability to move a video in another channel
+ * Improve web browser RAM consumption when watching (long) videos
+ * Support robots.txt in configuration
+ * Add ability to select the Redis database in configuration
+
+
+### Bug fixes
+
+ * Fix error message on token expiration
+ * Increase menu icon size
+ * Add timeout and TTL to request jobs to fix stuck job
+ * Fix responsive account about page
+ * Fix updating description account
+ * Account/video channel descriptions are not required anymore
+ * Fix video channel description and support max length (500 characters now)
+ * Fix "..." for buttons (delete/edit) in admin tables
+ * Fix overflow in markdown textarea preview
+ * Add ability to embed videos in a Twitter card
+ * Use `publishedAt` attribute when sorting videos
+ * Fix concurrent requests in videos list
+ * Fix player on iOS
+
+
+## v1.0.0-beta.4
+
+### BREAKING CHANGES
+
+ * Hide by default NSFW videos. Update the `instance.default_nsfw_policy` configuration to `blur` to keep the old behaviour
+ * Move video channels routes:
+   * `/videos/channels` routes to `/video-channels`
+   * `/videos/accounts/{accountId}/channels` route to `/accounts/{accountId}/video-channels`
+ * PeerTube now listen on 127.0.0.1 by default
+ * Use ISO 639 for language (*en*, *es*, *fr*...)
+   * Tools (`import-videos`...) need the language ISO639 code instead of a number
+   * API (`upload`, `update`, `list`...) need/return the language ISO639 code instead of a number
+
+### Features
+
+ * Add `publishedAt` attribute to videos
+ * Improve player:
+   * Smooth progress bar
+   * Settings menu
+   * Automatic resolution (depending on the user bandwidth)
+   * Some animations/effects
+   * More reactive when clicking on play
+   * Handle autoplay blocking by some web browsers
+   * Better responsive
+   * Add ability to link a specific timestamp. Example: https://peertube2.cpy.re/videos/watch/f78a97f8-a142-4ce1-a5bd-154bf9386504?start=58
+ * Add an id to the body to override current CSS (for custom CSS)
+ * Add privacy argument to `upload.ts` script
+ * RSS/Atom/JSON-feed for videos recently-added/trending/account
+ * Support hostname binding in the configuration
+ * Add ability to click on an account in the video watch page (link to a search)
+ * Better responsive on many comment replies
+ * Move follows in the job queue
+ * Add ability to choose the NSFW videos policy: hide, blur or display. Could be overrode by the user
+ * Add video privacy information in *my videos page*
+ * Use the video name for the torrent file name instead of the UUID
+ * Handle errors in embed (video not found, server error...)
+ * Account view (videos uploaded by this account + video channel owned by this account + about pages)
+ * Video channel view (videos uploaded in this channel + about pages)
+ * Video channel management (avatar update is still missing)
+
+### Bug fixes
+
+ * Fix "show more" description on video change
+ * Accept unlisted comments
+ * Don't start application until all components were initialized
+ * Fix word-break in video description and video comments
+ * Don't add a `.` after the URL in the "forgot password" email
+
+
+
 ## v1.0.0-beta.3
 
 ### Features

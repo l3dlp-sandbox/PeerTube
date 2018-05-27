@@ -1,18 +1,20 @@
 import * as kue from 'kue'
 import { JobState, JobType } from '../../../shared/models'
 import { logger } from '../../helpers/logger'
-import { CONFIG, JOB_ATTEMPTS, JOB_COMPLETED_LIFETIME, JOB_CONCURRENCY } from '../../initializers'
+import { CONFIG, JOB_ATTEMPTS, JOB_COMPLETED_LIFETIME, JOB_CONCURRENCY, JOB_REQUEST_TTL } from '../../initializers'
 import { Redis } from '../redis'
 import { ActivitypubHttpBroadcastPayload, processActivityPubHttpBroadcast } from './handlers/activitypub-http-broadcast'
 import { ActivitypubHttpFetcherPayload, processActivityPubHttpFetcher } from './handlers/activitypub-http-fetcher'
 import { ActivitypubHttpUnicastPayload, processActivityPubHttpUnicast } from './handlers/activitypub-http-unicast'
 import { EmailPayload, processEmail } from './handlers/email'
 import { processVideoFile, VideoFilePayload } from './handlers/video-file'
+import { ActivitypubFollowPayload, processActivityPubFollow } from './handlers/activitypub-follow'
 
 type CreateJobArgument =
   { type: 'activitypub-http-broadcast', payload: ActivitypubHttpBroadcastPayload } |
   { type: 'activitypub-http-unicast', payload: ActivitypubHttpUnicastPayload } |
   { type: 'activitypub-http-fetcher', payload: ActivitypubHttpFetcherPayload } |
+  { type: 'activitypub-follow', payload: ActivitypubFollowPayload } |
   { type: 'video-file', payload: VideoFilePayload } |
   { type: 'email', payload: EmailPayload }
 
@@ -20,9 +22,17 @@ const handlers: { [ id in JobType ]: (job: kue.Job) => Promise<any>} = {
   'activitypub-http-broadcast': processActivityPubHttpBroadcast,
   'activitypub-http-unicast': processActivityPubHttpUnicast,
   'activitypub-http-fetcher': processActivityPubHttpFetcher,
+  'activitypub-follow': processActivityPubFollow,
   'video-file': processVideoFile,
   'email': processEmail
 }
+
+const jobsWithTLL: JobType[] = [
+  'activitypub-http-broadcast',
+  'activitypub-http-unicast',
+  'activitypub-http-fetcher',
+  'activitypub-follow'
+]
 
 class JobQueue {
 
@@ -46,11 +56,12 @@ class JobQueue {
       redis: {
         host: CONFIG.REDIS.HOSTNAME,
         port: CONFIG.REDIS.PORT,
-        auth: CONFIG.REDIS.AUTH
+        auth: CONFIG.REDIS.AUTH,
+        db: CONFIG.REDIS.DB
       }
     })
 
-    this.jobQueue.setMaxListeners(15)
+    this.jobQueue.setMaxListeners(20)
 
     this.jobQueue.on('error', err => {
       logger.error('Error in job queue.', { err })
@@ -74,16 +85,21 @@ class JobQueue {
 
   createJob (obj: CreateJobArgument, priority = 'normal') {
     return new Promise((res, rej) => {
-      this.jobQueue
+      let job = this.jobQueue
         .create(obj.type, obj.payload)
         .priority(priority)
         .attempts(JOB_ATTEMPTS[obj.type])
         .backoff({ delay: 60 * 1000, type: 'exponential' })
-        .save(err => {
-          if (err) return rej(err)
 
-          return res()
-        })
+      if (jobsWithTLL.indexOf(obj.type) !== -1) {
+        job = job.ttl(JOB_REQUEST_TTL)
+      }
+
+      return job.save(err => {
+        if (err) return rej(err)
+
+        return res()
+      })
     })
   }
 

@@ -7,9 +7,9 @@ Federated (ActivityPub) video streaming platform using P2P (BitTorrent)
 directly in the web browser with <a href="https://github.com/feross/webtorrent">WebTorrent</a>.
 </h4>
 
-**PeerTube is sponsored by [Framasoft](https://framatube.org/#en), a non-profit
-that promotes, spreads and develops free culture in general, and free-libre
-software in particular. If you want to support this project, please [consider
+**PeerTube is developed by [Framasoft](https://framasoft.org/?l=en), a non-profit
+that promotes and spreads free culture in general, and free-libre software in
+particular. If you want to support this project, please [consider
 donating to them](https://soutenir.framasoft.org/en/).**
 
 <p align="center">
@@ -23,6 +23,10 @@ donating to them](https://soutenir.framasoft.org/en/).**
 
   <a href="https://david-dm.org/Chocobozzz/PeerTube?path=client&type=dev">
     <img src="https://david-dm.org/Chocobozzz/PeerTube/dev-status.svg?path=client" alt="devDependency Status" />
+  </a>
+  
+  <a href="https://www.browserstack.com/automate/public-build/VXBPc0szNjUvRUNsREJQRFF6RkEvSjJBclZ4VUJBUm1hcS9RZGpUbitRST0tLWFWbjNEdVN6eEZpYTk4dGVpMkVlQWc9PQ==--644e755052bf7fe2346eb6e868be8e706718a17c%">
+    <img src='https://www.browserstack.com/automate/badge.svg?badge_key=VXBPc0szNjUvRUNsREJQRFF6RkEvSjJBclZ4VUJBUm1hcS9RZGpUbitRST0tLWFWbjNEdVN6eEZpYTk4dGVpMkVlQWc9PQ==--644e755052bf7fe2346eb6e868be8e706718a17c%'/>
   </a>
 </p>
 
@@ -119,7 +123,9 @@ coder to help!
 
 ## API REST documentation
 
-For now only on Github:
+Quick Start: [/support/doc/api/quickstart.md](/support/doc/api/quickstart.md)
+
+Endpoints documentation:
 
  * HTML version: [/support/doc/api/html/index.html](https://htmlpreview.github.io/?https://github.com/Chocobozzz/PeerTube/blob/develop/support/doc/api/html/index.html)
  * Swagger/OpenAPI schema: [/support/doc/api/openapi.yaml](/support/doc/api/openapi.yaml)

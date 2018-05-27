@@ -6,7 +6,7 @@ import { retryTransactionWrapper } from '../../../helpers/database-utils'
 import { getVideoFileResolution } from '../../../helpers/ffmpeg-utils'
 import { processImage } from '../../../helpers/image-utils'
 import { logger } from '../../../helpers/logger'
-import { createReqFiles, getFormattedObjects, getServerActor, resetSequelizeInstance } from '../../../helpers/utils'
+import { getFormattedObjects, getServerActor, resetSequelizeInstance } from '../../../helpers/utils'
 import {
   CONFIG,
   IMAGE_MIMETYPE_EXT,
@@ -19,13 +19,19 @@ import {
   VIDEO_MIMETYPE_EXT,
   VIDEO_PRIVACIES
 } from '../../../initializers'
-import { fetchRemoteVideoDescription, getVideoActivityPubUrl, shareVideoByServerAndChannel } from '../../../lib/activitypub'
+import {
+  changeVideoChannelShare,
+  fetchRemoteVideoDescription,
+  getVideoActivityPubUrl,
+  shareVideoByServerAndChannel
+} from '../../../lib/activitypub'
 import { sendCreateVideo, sendCreateView, sendUpdateVideo } from '../../../lib/activitypub/send'
 import { JobQueue } from '../../../lib/job-queue'
 import { Redis } from '../../../lib/redis'
 import {
   asyncMiddleware,
   authenticate,
+  optionalAuthenticate,
   paginationValidator,
   setDefaultPagination,
   setDefaultSort,
@@ -41,9 +47,11 @@ import { VideoModel } from '../../../models/video/video'
 import { VideoFileModel } from '../../../models/video/video-file'
 import { abuseVideoRouter } from './abuse'
 import { blacklistRouter } from './blacklist'
-import { videoChannelRouter } from './channel'
 import { videoCommentRouter } from './comment'
 import { rateVideoRouter } from './rate'
+import { VideoFilter } from '../../../../shared/models/videos/video-query.type'
+import { VideoSortField } from '../../../../client/src/app/shared/video/sort-field.type'
+import { isNSFWHidden, createReqFiles } from '../../../helpers/express-utils'
 
 const videosRouter = express.Router()
 
@@ -68,7 +76,6 @@ const reqVideoFileUpdate = createReqFiles(
 videosRouter.use('/', abuseVideoRouter)
 videosRouter.use('/', blacklistRouter)
 videosRouter.use('/', rateVideoRouter)
-videosRouter.use('/', videoChannelRouter)
 videosRouter.use('/', videoCommentRouter)
 
 videosRouter.get('/categories', listVideoCategories)
@@ -81,6 +88,7 @@ videosRouter.get('/',
   videosSortValidator,
   setDefaultSort,
   setDefaultPagination,
+  optionalAuthenticate,
   asyncMiddleware(listVideos)
 )
 videosRouter.get('/search',
@@ -89,6 +97,7 @@ videosRouter.get('/search',
   videosSortValidator,
   setDefaultSort,
   setDefaultPagination,
+  optionalAuthenticate,
   asyncMiddleware(searchVideos)
 )
 videosRouter.put('/:id',
@@ -235,7 +244,7 @@ async function addVideo (req: express.Request, res: express.Response, videoPhysi
 
     video.VideoFiles = [ videoFile ]
 
-    if (videoInfo.tags) {
+    if (videoInfo.tags !== undefined) {
       const tagInstances = await TagModel.findOrCreateTags(videoInfo.tags, t)
 
       await video.$set('Tags', tagInstances, sequelizeOptions)
@@ -301,30 +310,45 @@ async function updateVideo (req: express.Request, res: express.Response) {
       const sequelizeOptions = {
         transaction: t
       }
+      const oldVideoChannel = videoInstance.VideoChannel
 
       if (videoInfoToUpdate.name !== undefined) videoInstance.set('name', videoInfoToUpdate.name)
       if (videoInfoToUpdate.category !== undefined) videoInstance.set('category', videoInfoToUpdate.category)
       if (videoInfoToUpdate.licence !== undefined) videoInstance.set('licence', videoInfoToUpdate.licence)
       if (videoInfoToUpdate.language !== undefined) videoInstance.set('language', videoInfoToUpdate.language)
       if (videoInfoToUpdate.nsfw !== undefined) videoInstance.set('nsfw', videoInfoToUpdate.nsfw)
-      if (videoInfoToUpdate.privacy !== undefined) videoInstance.set('privacy', parseInt(videoInfoToUpdate.privacy.toString(), 10))
       if (videoInfoToUpdate.support !== undefined) videoInstance.set('support', videoInfoToUpdate.support)
       if (videoInfoToUpdate.description !== undefined) videoInstance.set('description', videoInfoToUpdate.description)
       if (videoInfoToUpdate.commentsEnabled !== undefined) videoInstance.set('commentsEnabled', videoInfoToUpdate.commentsEnabled)
+      if (videoInfoToUpdate.privacy !== undefined) {
+        const newPrivacy = parseInt(videoInfoToUpdate.privacy.toString(), 10)
+        videoInstance.set('privacy', newPrivacy)
+
+        if (wasPrivateVideo === true && newPrivacy !== VideoPrivacy.PRIVATE) {
+          videoInstance.set('publishedAt', new Date())
+        }
+      }
 
       const videoInstanceUpdated = await videoInstance.save(sequelizeOptions)
 
-      if (videoInfoToUpdate.tags) {
+      // Video tags update?
+      if (videoInfoToUpdate.tags !== undefined) {
         const tagInstances = await TagModel.findOrCreateTags(videoInfoToUpdate.tags, t)
 
-        await videoInstance.$set('Tags', tagInstances, sequelizeOptions)
-        videoInstance.Tags = tagInstances
+        await videoInstanceUpdated.$set('Tags', tagInstances, sequelizeOptions)
+        videoInstanceUpdated.Tags = tagInstances
+      }
+
+      // Video channel update?
+      if (res.locals.videoChannel && videoInstanceUpdated.channelId !== res.locals.videoChannel.id) {
+        await videoInstanceUpdated.$set('VideoChannel', res.locals.videoChannel, { transaction: t })
+        videoInstance.VideoChannel = res.locals.videoChannel
+
+        if (wasPrivateVideo === false) await changeVideoChannelShare(videoInstanceUpdated, oldVideoChannel, t)
       }
 
       // Now we'll update the video's meta data to our friends
-      if (wasPrivateVideo === false) {
-        await sendUpdateVideo(videoInstanceUpdated, t)
-      }
+      if (wasPrivateVideo === false) await sendUpdateVideo(videoInstanceUpdated, t)
 
       // Video is not private anymore, send a create action to remote servers
       if (wasPrivateVideo === true && videoInstanceUpdated.privacy !== VideoPrivacy.PRIVATE) {
@@ -384,7 +408,14 @@ async function getVideoDescription (req: express.Request, res: express.Response)
 }
 
 async function listVideos (req: express.Request, res: express.Response, next: express.NextFunction) {
-  const resultList = await VideoModel.listForApi(req.query.start, req.query.count, req.query.sort, req.query.filter)
+  const resultList = await VideoModel.listForApi({
+    start: req.query.start,
+    count: req.query.count,
+    sort: req.query.sort,
+    hideNSFW: isNSFWHidden(res),
+    filter: req.query.filter as VideoFilter,
+    withFiles: false
+  })
 
   return res.json(getFormattedObjects(resultList.data, resultList.total))
 }
@@ -411,11 +442,12 @@ async function removeVideo (req: express.Request, res: express.Response) {
 }
 
 async function searchVideos (req: express.Request, res: express.Response, next: express.NextFunction) {
-  const resultList = await VideoModel.searchAndPopulateAccountAndServerAndTags(
-    req.query.search,
-    req.query.start,
-    req.query.count,
-    req.query.sort
+  const resultList = await VideoModel.searchAndPopulateAccountAndServer(
+    req.query.search as string,
+    req.query.start as number,
+    req.query.count as number,
+    req.query.sort as VideoSortField,
+    isNSFWHidden(res)
   )
 
   return res.json(getFormattedObjects(resultList.data, resultList.total))

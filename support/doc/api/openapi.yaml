@@ -4,6 +4,14 @@ info:
   version: 1.0.0-beta
   description: Federated (ActivityPub) video streaming platform using P2P (BitTorrent) directly in the web browser with WebTorrent and Angular.
 host: peertube.example.com
+securityDefinitions:
+  OAuth2:
+    description: 'In the header: *Authorization: Bearer mytoken*'
+    type: oauth2
+    flow: password
+    # Not implemented yet
+    # authorizationUrl: https://example.com/oauth/authorize
+    tokenUrl: https://peertube.example.com/api/v1/users/token
 basePath: '/api/v1'
 schemes:
   - https
@@ -31,7 +39,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -42,6 +50,25 @@ paths:
           description: successful operation
           schema:
             $ref: '#/definitions/Account'
+  '/accounts/{id}/videos':
+    get:
+      tags:
+        - Accounts
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: string
+          description: 'The id of the account'
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Video'
   /accounts:
     get:
       tags:
@@ -70,8 +97,39 @@ paths:
           description: successful operation
           schema:
             $ref: '#/definitions/ServerConfig'
+  /feeds/videos.{format}:
+    get:
+      tags:
+        - Feeds
+      produces:
+        - application/atom+xml
+        - application/rss+xml
+        - application/json
+      parameters:
+        - name: format
+          in: path
+          required: true
+          type: string
+          enum: [ 'xml', 'atom', 'json']
+          default: 'xml'
+          description: 'The format expected (xml defaults to RSS 2.0, atom to ATOM 1.0 and json to JSON FEED 1.0'
+        - name: accountId
+          in: query
+          required: false
+          type: number
+          description: 'The id of the local account to filter to (beware, users IDs and not actors IDs which will return empty feeds'
+        - name: accountName
+          in: query
+          required: false
+          type: string
+          description: 'The name of the local account to filter to'
+      responses:
+        '200':
+          description: successful operation
   /jobs:
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - Job
       consumes:
@@ -108,6 +166,8 @@ paths:
               $ref: '#/definitions/Job'
   '/server/following/{host}':
     delete:
+      security:
+        - OAuth2: [ ]
       tags:
         - ServerFollowing
       consumes:
@@ -141,7 +201,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -172,7 +232,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -186,6 +246,8 @@ paths:
             items:
               $ref: '#/definitions/Follow'
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - ServerFollowing
       consumes:
@@ -202,6 +264,8 @@ paths:
           description: successful operation
   /users:
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -212,6 +276,7 @@ paths:
         - in: body
           name: body
           required: true
+          description: 'User to create'
           schema:
             $ref: '#/definitions/AddUser'
       responses:
@@ -220,6 +285,8 @@ paths:
           schema:
             $ref: '#/definitions/AddUserResponse'
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -236,7 +303,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -251,6 +318,8 @@ paths:
               $ref: '#/definitions/User'
   '/users/{id}':
     delete:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -267,6 +336,8 @@ paths:
         '204':
           description: successful operation
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -285,6 +356,8 @@ paths:
           schema:
             $ref: '#/definitions/User'
     put:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -307,6 +380,8 @@ paths:
           description: successful operation
   /users/me:
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -321,6 +396,8 @@ paths:
             items:
               $ref: '#/definitions/User'
     put:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -338,6 +415,8 @@ paths:
           description: successful operation
   /users/me/video-quota-used:
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -352,6 +431,8 @@ paths:
             type: number
   '/users/me/videos/{videoId}/rating':
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -371,6 +452,8 @@ paths:
             $ref: '#/definitions/GetMeVideoRating'
   /users/me/videos:
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -387,7 +470,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -419,6 +502,8 @@ paths:
           description: successful operation
   /users/me/avatar/pick:
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - User
       consumes:
@@ -453,7 +538,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -544,7 +629,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -559,10 +644,12 @@ paths:
               $ref: '#/definitions/Video'
   "/videos/{id}":
     put:
+      security:
+        - OAuth2: [ ]
       tags:
         - Video
       consumes:
-        - application/json
+        - multipart/form-data
       produces:
         - application/json
       parameters:
@@ -570,7 +657,56 @@ paths:
           in: path
           required: true
           type: string
-          description: 'The video id '
+          description: 'The video id'
+        - name: thumbnailfile
+          in: formData
+          type: file
+          description: 'Video thumbnail file'
+        - name: previewfile
+          in: formData
+          type: file
+          description: 'Video preview file'
+        - name: category
+          in: formData
+          type: number
+          description: 'Video category'
+        - name: licence
+          in: formData
+          type: number
+          description: 'Video licence'
+        - name: language
+          in: formData
+          type: string
+          description: 'Video language'
+        - name: description
+          in: formData
+          type: string
+          description: 'Video description'
+        - name: support
+          in: formData
+          type: string
+          description: 'Text describing how to support the video uploader'
+        - name: nsfw
+          in: formData
+          type: boolean
+          description: 'Whether or not this video contains sensitive content'
+        - name: name
+          in: formData
+          type: string
+          description: 'Video name'
+        - name: tags
+          in: formData
+          type: string[]
+          description: 'Video tags'
+        - name: commentsEnabled
+          in: formData
+          type: boolean
+          description: 'Enable or disable comments for this video'
+        - name: privacy
+          in: formData
+          type: string
+          enum: [Public, Unlisted]
+          description: 'Video privacy'
       responses:
         '200':
           description: successful operation
@@ -595,6 +731,8 @@ paths:
           schema:
             $ref: '#/definitions/Video'
     delete:
+      security:
+        - OAuth2: [ ]
       tags:
         - Video
       consumes:
@@ -648,6 +786,8 @@ paths:
           description: successful operation
   /videos/upload:
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - Video
       consumes:
@@ -655,10 +795,70 @@ paths:
       produces:
         - application/json
       parameters:
-        - in: formData
-          name: videofile
+        - name: videofile
+          in: formData
           type: file
-          description: The file to upload.
+          required: true
+          description: 'Video file'
+        - name: thumbnailfile
+          in: formData
+          type: file
+          required: true
+          description: 'Video thumbnail file'
+        - name: previewfile
+          in: formData
+          type: file
+          required: true
+          description: 'Video preview file'
+        - name: category
+          in: formData
+          type: number
+          description: 'Video category'
+        - name: licence
+          in: formData
+          type: number
+          description: 'Video licence'
+        - name: language
+          in: formData
+          type: string
+          description: 'Video language'
+        - name: description
+          in: formData
+          type: string
+          description: 'Video description'
+        - name: support
+          in: formData
+          type: string
+          description: 'Text describing how to support the video uploader'
+        - name: channelId
+          in: formData
+          required: true
+          type: number
+          description: 'Channel id that will contain this video'
+        - name: nsfw
+          in: formData
+          required: true
+          type: boolean
+          description: 'Whether or not this video contains sensitive content'
+        - name: name
+          in: formData
+          required: true
+          type: string
+          description: 'Video name'
+        - name: tags
+          in: formData
+          type: string[]
+          description: 'Video tags'
+        - name: commentsEnabled
+          in: formData
+          type: boolean
+          description: 'Enable or disable comments for this video'
+        - name: privacy
+          in: formData
+          required: true
+          type: string
+          enum: [Public, Unlisted, Private]
+          description: 'Video privacy'
       responses:
         '200':
           description: successful operation
@@ -666,6 +866,8 @@ paths:
             $ref: '#/definitions/VideoUploadResponse'
   /videos/abuse:
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoAbuse
       consumes:
@@ -682,7 +884,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -697,6 +899,8 @@ paths:
               $ref: '#/definitions/VideoAbuse'
   "/videos/{id}/abuse":
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoAbuse
       consumes:
@@ -714,6 +918,8 @@ paths:
           description: successful operation
   "/videos/{videoId}/blacklist":
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoBlacklist
       consumes:
@@ -730,6 +936,8 @@ paths:
         '204':
           description: successful operation
     delete:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoBlacklist
       consumes:
@@ -747,6 +955,8 @@ paths:
           description: successful operation
   /videos/blacklist:
     get:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoBlacklist
       consumes:
@@ -763,7 +973,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -776,7 +986,7 @@ paths:
             type: array
             items:
               $ref: '#/definitions/VideoBlacklist'
-  /videos/channels:
+  /video-channels:
     get:
       tags:
         - VideoChannel
@@ -794,7 +1004,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -808,6 +1018,8 @@ paths:
             items:
               $ref: '#/definitions/VideoChannel'
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoChannel
       consumes:
@@ -822,7 +1034,7 @@ paths:
       responses:
         '204':
           description: successful operation
-  "/videos/channels/{id}":
+  "/video-channels/{id}":
     get:
       tags:
         - VideoChannel
@@ -835,13 +1047,15 @@ paths:
           in: path
           required: true
           type: string
-          description: 'The video id '
+          description: 'The video channel id '
       responses:
         '200':
           description: successful operation
           schema:
             $ref: '#/definitions/VideoChannel'
     put:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoChannel
       consumes:
@@ -853,7 +1067,7 @@ paths:
           in: path
           required: true
           type: string
-          description: 'The video id '
+          description: 'The video channel id '
         - in: body
           name: body
           schema:
@@ -862,6 +1076,8 @@ paths:
         '204':
           description: successful operation
     delete:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoChannel
       consumes:
@@ -873,11 +1089,30 @@ paths:
           in: path
           required: true
           type: string
-          description: 'The video id '
+          description: 'The video channel id '
       responses:
         '204':
           description: successful operation
-  /videos/accounts/{accountId}/channels:
+  "/video-channels/{id}/videos":
+    get:
+      tags:
+        - VideoChannel
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: string
+          description: 'The video channel id '
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Video'
+  /accounts/{accountId}/video-channels:
     get:
       tags:
         - VideoChannel
@@ -921,7 +1156,7 @@ paths:
           in: query
           required: false
           type: number
-          description: 'stoping page'
+          description: 'stopping page'
         - name: sort
           in: query
           required: false
@@ -933,6 +1168,8 @@ paths:
           schema:
             $ref: '#/definitions/CommentThreadResponse'
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoComment
       consumes:
@@ -976,6 +1213,8 @@ paths:
             $ref: '#/definitions/VideoCommentThreadTree'
   "/videos/{videoId}/comments/{commentId}":
     post:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoComment
       consumes:
@@ -999,6 +1238,8 @@ paths:
           schema:
             $ref: '#/definitions/CommentThreadPostResponse'
     delete:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoComment
       consumes:
@@ -1021,6 +1262,8 @@ paths:
           description: successful operation
   "/videos/{id}/rate":
     put:
+      security:
+        - OAuth2: [ ]
       tags:
         - VideoRate
       consumes:
@@ -1037,12 +1280,21 @@ paths:
         '204':
           description: successful operation
 definitions:
-  VideoConstant:
+  VideoConstantNumber:
     properties:
       id:
         type: number
       label:
         type: string
+  VideoConstantString:
+    properties:
+      id:
+        type: string
+      label:
+        type: string
+  VideoPrivacy:
+    type: string
+    enum: [Public, Unlisted, Private]
   Video:
     properties:
       id:
@@ -1051,14 +1303,18 @@ definitions:
         type: string
       createdAt:
         type: string
+      publishedAt:
+        type: string
       updatedAt:
         type: string
       category:
-        $ref: "#/definitions/VideoConstant"
+        $ref: "#/definitions/VideoConstantNumber"
       licence:
-        $ref: "#/definitions/VideoConstant"
+        $ref: "#/definitions/VideoConstantNumber"
       language:
-        $ref: "#/definitions/VideoConstant"
+        $ref: "#/definitions/VideoConstantString"
+      privacy:
+        $ref: "#/definitions/VideoPrivacy"
       description:
         type: string
       duration:
@@ -1082,12 +1338,18 @@ definitions:
       nsfw:
         type: boolean
       account:
-        name: string
-        displayName: string
-        url: string
-        host: string
-        avatar:
-          $ref: "#/definitions/Avatar"
+        type: object
+        properties:
+          name:
+            type: string
+          displayName:
+            type: string
+          url:
+            type: string
+          host:
+            type: string
+          avatar:
+            $ref: "#/definitions/Avatar"
   VideoAbuse:
     properties:
       id:
@@ -1097,10 +1359,16 @@ definitions:
       reporterAccount:
         $ref: "#/definitions/Account"
       video:
-        id: number
-        name: string
-        uuid: string
-        url: string
+        type: object
+        properties:
+          id:
+            type: number
+          name:
+            type: string
+          uuid:
+            type: string
+          url:
+            type: string
       createdAt:
         type: string
   VideoBlacklist:
@@ -1137,17 +1405,13 @@ definitions:
         type: string
       isLocal:
         type: boolean
-      owner:
+      ownerAccount:
         type: object
         properties:
-          name:
-            type: string
+          id:
+            type: number
           uuid:
             type: string
-      videos:
-        type: array
-        items:
-          $ref: "#/definitions/Video"
   VideoComment:
     properties:
       id:
@@ -1314,7 +1578,7 @@ definitions:
       updatedAt:
         type: string
 
-#Api responses
+# Api responses
   AddUserResponse:
     properties:
       id:
@@ -1323,10 +1587,13 @@ definitions:
         type: string
   VideoUploadResponse:
     properties:
-      id:
-        type: number
-      uuid:
-        type: string
+      video:
+        type: object
+        properties:
+          id:
+            type: number
+          uuid:
+            type: string
   CommentThreadResponse:
     properties:
       total:
@@ -1340,7 +1607,7 @@ definitions:
       comment:
         $ref: "#/definitions/VideoComment"
 
-#request bodies
+# Request bodies
   AddUser:
     properties:
       username:

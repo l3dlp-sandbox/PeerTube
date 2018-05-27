@@ -1,4 +1,5 @@
 listen:
+  hostname: 'localhost'
   port: 9000
 
 # Correspond to your reverse proxy "listen" configuration
@@ -26,6 +27,7 @@ redis:
   hostname: 'localhost'
   port: 6379
   auth: null
+  db: 0
 
 # SMTP server to send emails
 smtp:
@@ -54,7 +56,7 @@ log:
 
 ###############################################################################
 #
-# From this point, all the following keys can be overriden by the web interface
+# From this point, all the following keys can be overridden by the web interface
 # (local-production.json file). If you need to change some values, prefer to
 # use the web interface because the configuration will be automatically
 # reloaded without any need to restart PeerTube.
@@ -74,6 +76,10 @@ admin:
 signup:
   enabled: false
   limit: 10 # When the limit is reached, registrations are disabled. -1 == unlimited
+  filters: 
+    cidr: # You can specify CIDR ranges to whitelist (empty = no filtering) or blacklist
+      whitelist: []
+      blacklist: []
 
 user:
   # Default value of maximum video BYTES the user can upload (does not take into account transcoded files).
@@ -99,6 +105,22 @@ instance:
   description: '' # Support markdown
   terms: '' # Support markdown
   default_client_route: '/videos/trending'
+  # By default, "do_not_list" or "blur" or "display" NSFW videos
+  # Could be overridden per user with a setting
+  default_nsfw_policy: 'do_not_list'
   customizations:
     javascript: '' # Directly your JavaScript code (without <script> tags). Will be eval at runtime
     css: '' # Directly your CSS code (without <style> tags). Will be injected at runtime
+  # Robot.txt rules. To disallow robots to crawl your instance and disallow indexation of your site, add '/' to "Disallow:'
+  robots: |
+    User-agent: *
+    Disallow: ''
+
+services:
+  # Cards configuration to format video in Twitter
+  twitter:
+    username: '@Chocobozzz' # The Twitter @username the card should be attributed to
+    # If true, a video player will be embedded in the Twitter feed on PeerTube video share
+    # If false, we use an image link card that will redirect on your PeerTube instance
+    # Test on https://cards-dev.twitter.com/validator to see if you are whitelisted
+    whitelisted: false

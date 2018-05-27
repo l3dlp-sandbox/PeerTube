@@ -1,9 +1,19 @@
+@import '_mixins';
+
 .videos {
   text-align: center;
 
   my-video-miniature {
     text-align: left;
   }
+}
+
+.title-page.title-page-single {
+  margin-right: 5px;
+}
+
+my-video-feed {
+  display: inline-block;
 }
 
 @media screen and (max-width: 500px) {

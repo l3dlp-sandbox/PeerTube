@@ -231,9 +231,9 @@ describe('Test users API validators', function () {
       await makePutBodyRequest({ url: server.url, path: path + 'me', token: userAccessToken, fields })
     })
 
-    it('Should fail with an invalid display NSFW attribute', async function () {
+    it('Should fail with an invalid NSFW policy attribute', async function () {
       const fields = {
-        displayNSFW: -1
+        nsfwPolicy: 'hello'
       }
 
       await makePutBodyRequest({ url: server.url, path: path + 'me', token: userAccessToken, fields })
@@ -266,7 +266,7 @@ describe('Test users API validators', function () {
     it('Should succeed with the correct params', async function () {
       const fields = {
         password: 'my super password',
-        displayNSFW: true,
+        nsfwPolicy: 'blur',
         autoPlayVideo: false,
         email: 'super_email@example.com'
       }
@@ -305,6 +305,26 @@ describe('Test users API validators', function () {
         attaches,
         statusCodeExpected: 200
       })
+    })
+  })
+
+  describe('When getting a user', function () {
+    before(async function () {
+      const res = await getUsersList(server.url, server.accessToken)
+
+      userId = res.body.data[1].id
+    })
+
+    it('Should fail with an non authenticated user', async function () {
+      await makeGetRequest({ url: server.url, path: path + userId, token: 'super token', statusCodeExpected: 401 })
+    })
+
+    it('Should fail with a non admin user', async function () {
+      await makeGetRequest({ url: server.url, path, token: userAccessToken, statusCodeExpected: 403 })
+    })
+
+    it('Should succeed with the correct params', async function () {
+      await makeGetRequest({ url: server.url, path: path + userId, token: server.accessToken, statusCodeExpected: 200 })
     })
   })
 

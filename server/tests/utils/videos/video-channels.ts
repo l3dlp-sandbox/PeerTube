@@ -1,13 +1,8 @@
 import * as request from 'supertest'
-
-type VideoChannelAttributes = {
-  name?: string
-  description?: string
-  support?: string
-}
+import { VideoChannelCreate, VideoChannelUpdate } from '../../../../shared/models/videos'
 
 function getVideoChannelsList (url: string, start: number, count: number, sort?: string) {
-  const path = '/api/v1/videos/channels'
+  const path = '/api/v1/video-channels'
 
   const req = request(url)
     .get(path)
@@ -22,7 +17,7 @@ function getVideoChannelsList (url: string, start: number, count: number, sort?:
 }
 
 function getAccountVideoChannelsList (url: string, accountId: number | string, specialStatus = 200) {
-  const path = '/api/v1/videos/accounts/' + accountId + '/channels'
+  const path = '/api/v1/accounts/' + accountId + '/video-channels'
 
   return request(url)
     .get(path)
@@ -31,12 +26,17 @@ function getAccountVideoChannelsList (url: string, accountId: number | string, s
     .expect('Content-Type', /json/)
 }
 
-function addVideoChannel (url: string, token: string, videoChannelAttributesArg: VideoChannelAttributes, expectedStatus = 200) {
-  const path = '/api/v1/videos/channels'
+function addVideoChannel (
+  url: string,
+  token: string,
+  videoChannelAttributesArg: VideoChannelCreate,
+  expectedStatus = 200
+) {
+  const path = '/api/v1/video-channels/'
 
   // Default attributes
   let attributes = {
-    name: 'my super video channel',
+    displayName: 'my super video channel',
     description: 'my super channel description',
     support: 'my super channel support'
   }
@@ -50,11 +50,17 @@ function addVideoChannel (url: string, token: string, videoChannelAttributesArg:
     .expect(expectedStatus)
 }
 
-function updateVideoChannel (url: string, token: string, channelId: number, attributes: VideoChannelAttributes, expectedStatus = 204) {
+function updateVideoChannel (
+  url: string,
+  token: string,
+  channelId: number | string,
+  attributes: VideoChannelUpdate,
+  expectedStatus = 204
+) {
   const body = {}
-  const path = '/api/v1/videos/channels/' + channelId
+  const path = '/api/v1/video-channels/' + channelId
 
-  if (attributes.name) body['name'] = attributes.name
+  if (attributes.displayName) body['displayName'] = attributes.displayName
   if (attributes.description) body['description'] = attributes.description
   if (attributes.support) body['support'] = attributes.support
 
@@ -66,18 +72,18 @@ function updateVideoChannel (url: string, token: string, channelId: number, attr
     .expect(expectedStatus)
 }
 
-function deleteVideoChannel (url: string, token: string, channelId: number, expectedStatus = 204) {
-  const path = '/api/v1/videos/channels/'
+function deleteVideoChannel (url: string, token: string, channelId: number | string, expectedStatus = 204) {
+  const path = '/api/v1/video-channels/' + channelId
 
   return request(url)
-    .delete(path + channelId)
+    .delete(path)
     .set('Accept', 'application/json')
     .set('Authorization', 'Bearer ' + token)
     .expect(expectedStatus)
 }
 
-function getVideoChannel (url: string, channelId: number) {
-  const path = '/api/v1/videos/channels/' + channelId
+function getVideoChannel (url: string, channelId: number | string) {
+  const path = '/api/v1/video-channels/' + channelId
 
   return request(url)
     .get(path)

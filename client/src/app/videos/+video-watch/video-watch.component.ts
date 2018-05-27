@@ -5,7 +5,7 @@ import { peertubeLocalStorage } from '@app/shared/misc/peertube-local-storage'
 import { VideoSupportComponent } from '@app/videos/+video-watch/modal/video-support.component'
 import { MetaService } from '@ngx-meta/core'
 import { NotificationsService } from 'angular2-notifications'
-import { Subscription } from 'rxjs/Subscription'
+import { Subscription } from 'rxjs'
 import * as videojs from 'video.js'
 import 'videojs-hotkeys'
 import * as WebTorrent from 'webtorrent'
@@ -13,7 +13,6 @@ import { UserVideoRateType, VideoRateType } from '../../../../../shared'
 import '../../../assets/player/peertube-videojs-plugin'
 import { AuthService, ConfirmService } from '../../core'
 import { VideoBlacklistService } from '../../shared'
-import { Account } from '../../shared/account/account.model'
 import { VideoDetails } from '../../shared/video/video-details.model'
 import { Video } from '../../shared/video/video.model'
 import { VideoService } from '../../shared/video/video.service'
@@ -21,6 +20,8 @@ import { MarkdownService } from '../shared'
 import { VideoDownloadComponent } from './modal/video-download.component'
 import { VideoReportComponent } from './modal/video-report.component'
 import { VideoShareComponent } from './modal/video-share.component'
+import { getVideojsOptions } from '../../../assets/player/peertube-player'
+import { ServerService } from '@app/core'
 
 @Component({
   selector: 'my-video-watch',
@@ -37,12 +38,10 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
 
   otherVideosDisplayed: Video[] = []
 
-  error = false
   player: videojs.Player
   playerElement: HTMLVideoElement
   userRating: UserVideoRateType = null
   video: VideoDetails = null
-  videoPlayerLoaded = false
   videoNotFound = false
   descriptionLoading = false
 
@@ -65,6 +64,7 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
     private confirmService: ConfirmService,
     private metaService: MetaService,
     private authService: AuthService,
+    private serverService: ServerService,
     private notificationsService: NotificationsService,
     private markdownService: MarkdownService,
     private zone: NgZone,
@@ -94,16 +94,20 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
       )
 
     this.paramsSub = this.route.params.subscribe(routeParams => {
-      if (this.videoPlayerLoaded) {
+      if (this.player) {
         this.player.pause()
       }
 
       const uuid = routeParams['uuid']
-      // Video did not changed
+      // Video did not change
       if (this.video && this.video.uuid === uuid) return
-
+      // Video did change
       this.videoService.getVideo(uuid).subscribe(
-        video => this.onVideoFetched(video),
+        video => {
+          const startTime = this.route.snapshot.queryParams.start
+          this.onVideoFetched(video, startTime)
+            .catch(err => this.handleError(err))
+        },
 
         error => {
           this.videoNotFound = true
@@ -114,10 +118,7 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy () {
-    // Remove player if it exists
-    if (this.videoPlayerLoaded === true) {
-      videojs(this.playerElement).dispose()
-    }
+    this.flushPlayer()
 
     // Unsubscribe subscriptions
     this.paramsSub.unsubscribe()
@@ -226,10 +227,6 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
     return this.video.isBlackistableBy(this.user)
   }
 
-  getAvatarPath () {
-    return Account.GET_ACCOUNT_AVATAR_URL(this.video.account)
-  }
-
   getVideoPoster () {
     if (!this.video) return ''
 
@@ -319,12 +316,16 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
                       )
   }
 
-  private async onVideoFetched (video: VideoDetails) {
+  private async onVideoFetched (video: VideoDetails, startTime = 0) {
     this.video = video
+
+    // Re init attributes
+    this.descriptionLoading = false
+    this.completeDescriptionShown = false
 
     this.updateOtherVideosDisplayed()
 
-    if (this.video.isVideoNSFWForUser(this.user)) {
+    if (this.video.isVideoNSFWForUser(this.user, this.serverService.getConfig())) {
       const res = await this.confirmService.confirm(
         'This video contains mature or explicit content. Are you sure you want to watch it?',
         'Mature or explicit content'
@@ -332,68 +333,36 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
       if (res === false) return this.redirectService.redirectToHomepage()
     }
 
-    // Player was already loaded
-    if (this.videoPlayerLoaded !== true) {
-      this.playerElement = this.elementRef.nativeElement.querySelector('#video-element')
+    // Flush old player if needed
+    this.flushPlayer()
 
-      // If autoplay is true, we don't really need a poster
-      if (this.isAutoplay() === false) {
-        this.playerElement.poster = this.video.previewUrl
-      }
+    // Build video element, because videojs remove it on dispose
+    const playerElementWrapper = this.elementRef.nativeElement.querySelector('#video-element-wrapper')
+    this.playerElement = document.createElement('video')
+    this.playerElement.className = 'video-js vjs-peertube-skin'
+    this.playerElement.setAttribute('playsinline', 'true')
+    playerElementWrapper.appendChild(this.playerElement)
 
-      const videojsOptions = {
-        controls: true,
-        autoplay: this.isAutoplay(),
-        playbackRates: [ 0.5, 1, 1.5, 2 ],
-        plugins: {
-          peertube: {
-            videoFiles: this.video.files,
-            playerElement: this.playerElement,
-            videoViewUrl: this.videoService.getVideoViewUrl(this.video.uuid),
-            videoDuration: this.video.duration
-          },
-          hotkeys: {
-            enableVolumeScroll: false
-          }
-        },
-        controlBar: {
-          children: [
-            'playToggle',
-            'currentTimeDisplay',
-            'timeDivider',
-            'durationDisplay',
-            'liveDisplay',
+    const videojsOptions = getVideojsOptions({
+      autoplay: this.isAutoplay(),
+      inactivityTimeout: 2500,
+      videoFiles: this.video.files,
+      playerElement: this.playerElement,
+      videoViewUrl: this.videoService.getVideoViewUrl(this.video.uuid),
+      videoDuration: this.video.duration,
+      enableHotkeys: true,
+      peertubeLink: false,
+      poster: this.video.previewUrl,
+      startTime
+    })
 
-            'flexibleWidthSpacer',
-            'progressControl',
-
-            'webTorrentButton',
-
-            'playbackRateMenuButton',
-
-            'muteToggle',
-            'volumeControl',
-
-            'resolutionMenuButton',
-
-            'fullscreenToggle'
-          ]
-        }
-      }
-
-      this.videoPlayerLoaded = true
-
-      const self = this
-      this.zone.runOutsideAngular(() => {
-        videojs(this.playerElement, videojsOptions, function () {
-          self.player = this
-          this.on('customError', (event, data) => self.handleError(data.err))
-        })
+    const self = this
+    this.zone.runOutsideAngular(() => {
+      videojs(this.playerElement, videojsOptions, function () {
+        self.player = this
+        this.on('customError', (event, data) => self.handleError(data.err))
       })
-    } else {
-      const videoViewUrl = this.videoService.getVideoViewUrl(this.video.uuid)
-      this.player.peertube().setVideoFiles(this.video.files, videoViewUrl, this.video.duration)
-    }
+    })
 
     this.setVideoDescriptionHTML()
     this.setVideoLikesBarTooltipText()
@@ -479,5 +448,13 @@ export class VideoWatchComponent implements OnInit, OnDestroy {
 
     // Be sure the autoPlay is set to false
     return this.user.autoPlayVideo !== false
+  }
+
+  private flushPlayer () {
+    // Remove player if it exists
+    if (this.player) {
+      this.player.dispose()
+      this.player = undefined
+    }
   }
 }

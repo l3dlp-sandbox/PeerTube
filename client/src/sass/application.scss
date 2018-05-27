@@ -111,6 +111,10 @@ label {
   &:hover, &:active, &:focus {
     color: #000;
   }
+
+  @media screen and (max-width: 500px) {
+    margin-right: 20px;
+  }
 }
 
 .admin-sub-header {
@@ -118,12 +122,12 @@ label {
   align-items: center;
   margin-bottom: 30px;
 
-  .admin-sub-title {
+  .form-sub-title {
     flex-grow: 1;
   }
 }
 
-.admin-sub-title {
+.form-sub-title {
   font-size: 20px;
   font-weight: bold;
 }
@@ -223,6 +227,10 @@ p-table {
     width: 250px !important;
     padding: 0 !important;
     text-align: center;
+
+    my-edit-button + my-delete-button {
+      margin-left: 5px;
+    }
   }
 
   p-paginator {

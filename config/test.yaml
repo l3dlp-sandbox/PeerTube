@@ -1,4 +1,5 @@
 listen:
+  listen: '0.0.0.0'
   port: 9000
 
 webserver:
@@ -32,3 +33,6 @@ transcoding:
     480p: true
     720p: true
     1080p: true
+
+instance:
+  default_nsfw_policy: 'display'

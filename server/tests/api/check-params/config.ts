@@ -6,7 +6,7 @@ import { CustomConfig } from '../../../../shared/models/server/custom-config.mod
 
 import {
   createUser, flushTests, killallServers, makeDeleteRequest, makeGetRequest, makePutBodyRequest, runServer, ServerInfo,
-  setAccessTokensToServers, userLogin
+  setAccessTokensToServers, userLogin, immutableAssign
 } from '../../utils'
 
 describe('Test config API validators', function () {
@@ -20,9 +20,16 @@ describe('Test config API validators', function () {
       description: 'my super description',
       terms: 'my super terms',
       defaultClientRoute: '/videos/recently-added',
+      defaultNSFWPolicy: 'blur',
       customizations: {
         javascript: 'alert("coucou")',
         css: 'body { background-color: red; }'
+      }
+    },
+    services: {
+      twitter: {
+        username: '@MySuperUsername',
+        whitelisted: true
       }
     },
     cache: {
@@ -112,6 +119,22 @@ describe('Test config API validators', function () {
 
     it('Should fail if it misses a key', async function () {
       const newUpdateParams = omit(updateParams, 'admin.email')
+
+      await makePutBodyRequest({
+        url: server.url,
+        path,
+        fields: newUpdateParams,
+        token: server.accessToken,
+        statusCodeExpected: 400
+      })
+    })
+
+    it('Should fail with a bad default NSFW policy', async function () {
+      const newUpdateParams = immutableAssign(updateParams, {
+        instance: {
+          defaultNSFWPolicy: 'hello'
+        }
+      })
 
       await makePutBodyRequest({
         url: server.url,

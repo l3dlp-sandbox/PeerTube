@@ -7,7 +7,7 @@ import { CanComponentDeactivate } from '@app/shared/guards/can-deactivate-guard.
 import { LoadingBarService } from '@ngx-loading-bar/core'
 import { NotificationsService } from 'angular2-notifications'
 import { BytesPipe } from 'ngx-pipes'
-import { Subscription } from 'rxjs/Subscription'
+import { Subscription } from 'rxjs'
 import { VideoPrivacy } from '../../../../../shared/models/videos'
 import { AuthService, ServerService } from '../../core'
 import { FormReactive } from '../../shared'
@@ -24,7 +24,6 @@ import { VideoService } from '../../shared/video/video.service'
     './video-add.component.scss'
   ]
 })
-
 export class VideoAddComponent extends FormReactive implements OnInit, OnDestroy, CanComponentDeactivate {
   @ViewChild('videofileInput') videofileInput
 
@@ -220,7 +219,6 @@ export class VideoAddComponent extends FormReactive implements OnInit, OnDestroy
 
     const video = new VideoEdit()
     video.patch(this.form.value)
-    video.channel = this.firstStepChannelId
     video.id = this.videoUploadedIds.id
     video.uuid = this.videoUploadedIds.uuid
 

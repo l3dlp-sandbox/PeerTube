@@ -4,7 +4,7 @@ import { ServerConfig, UserRight } from '../../../shared'
 import { About } from '../../../shared/models/server/about.model'
 import { CustomConfig } from '../../../shared/models/server/custom-config.model'
 import { unlinkPromise, writeFilePromise } from '../../helpers/core-utils'
-import { isSignupAllowed } from '../../helpers/utils'
+import { isSignupAllowed, isSignupAllowedForCurrentIP } from '../../helpers/utils'
 import { CONFIG, CONSTRAINTS_FIELDS, reloadConfig } from '../../initializers'
 import { asyncMiddleware, authenticate, ensureUserHasRight } from '../../middlewares'
 import { customConfigUpdateValidator } from '../../middlewares/validators/config'
@@ -36,6 +36,7 @@ configRouter.delete('/custom',
 
 async function getConfig (req: express.Request, res: express.Response, next: express.NextFunction) {
   const allowed = await isSignupAllowed()
+  const allowedForCurrentIP = isSignupAllowedForCurrentIP(req.ip)
 
   const enabledResolutions = Object.keys(CONFIG.TRANSCODING.RESOLUTIONS)
    .filter(key => CONFIG.TRANSCODING.RESOLUTIONS[key] === true)
@@ -46,6 +47,7 @@ async function getConfig (req: express.Request, res: express.Response, next: exp
       name: CONFIG.INSTANCE.NAME,
       shortDescription: CONFIG.INSTANCE.SHORT_DESCRIPTION,
       defaultClientRoute: CONFIG.INSTANCE.DEFAULT_CLIENT_ROUTE,
+      defaultNSFWPolicy: CONFIG.INSTANCE.DEFAULT_NSFW_POLICY,
       customizations: {
         javascript: CONFIG.INSTANCE.CUSTOMIZATIONS.JAVASCRIPT,
         css: CONFIG.INSTANCE.CUSTOMIZATIONS.CSS
@@ -53,7 +55,8 @@ async function getConfig (req: express.Request, res: express.Response, next: exp
     },
     serverVersion: packageJSON.version,
     signup: {
-      allowed
+      allowed,
+      allowedForCurrentIP
     },
     transcoding: {
       enabledResolutions
@@ -128,6 +131,7 @@ async function updateCustomConfig (req: express.Request, res: express.Response, 
   toUpdateJSON.user['video_quota'] = toUpdate.user.videoQuota
   toUpdateJSON.instance['default_client_route'] = toUpdate.instance.defaultClientRoute
   toUpdateJSON.instance['short_description'] = toUpdate.instance.shortDescription
+  toUpdateJSON.instance['default_nsfw_policy'] = toUpdate.instance.defaultNSFWPolicy
 
   await writeFilePromise(CONFIG.CUSTOM_FILE, JSON.stringify(toUpdateJSON, undefined, 2))
 
@@ -153,9 +157,16 @@ function customConfig (): CustomConfig {
       description: CONFIG.INSTANCE.DESCRIPTION,
       terms: CONFIG.INSTANCE.TERMS,
       defaultClientRoute: CONFIG.INSTANCE.DEFAULT_CLIENT_ROUTE,
+      defaultNSFWPolicy: CONFIG.INSTANCE.DEFAULT_NSFW_POLICY,
       customizations: {
         css: CONFIG.INSTANCE.CUSTOMIZATIONS.CSS,
         javascript: CONFIG.INSTANCE.CUSTOMIZATIONS.JAVASCRIPT
+      }
+    },
+    services: {
+      twitter: {
+        username: CONFIG.SERVICES.TWITTER.USERNAME,
+        whitelisted: CONFIG.SERVICES.TWITTER.WHITELISTED
       }
     },
     cache: {

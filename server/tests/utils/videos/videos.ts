@@ -15,7 +15,7 @@ import {
   ServerInfo,
   testImage
 } from '../'
-import { VideoPrivacy } from '../../../../shared/models/videos'
+import { VideoDetails, VideoPrivacy } from '../../../../shared/models/videos'
 import { readdirPromise } from '../../../helpers/core-utils'
 import { VIDEO_CATEGORIES, VIDEO_LANGUAGES, VIDEO_LICENCES, VIDEO_PRIVACIES } from '../../../initializers'
 import { dateIsValid, webtorrentAdd } from '../index'
@@ -24,7 +24,7 @@ type VideoAttributes = {
   name?: string
   category?: number
   licence?: number
-  language?: number
+  language?: string
   nsfw?: boolean
   commentsEnabled?: boolean
   description?: string
@@ -128,6 +128,18 @@ function getVideosList (url: string) {
           .expect('Content-Type', /json/)
 }
 
+function getVideosListWithToken (url: string, token: string) {
+  const path = '/api/v1/videos'
+
+  return request(url)
+    .get(path)
+    .set('Authorization', 'Bearer ' + token)
+    .query({ sort: 'name' })
+    .set('Accept', 'application/json')
+    .expect(200)
+    .expect('Content-Type', /json/)
+}
+
 function getLocalVideos (url: string) {
   const path = '/api/v1/videos'
 
@@ -153,6 +165,45 @@ function getMyVideos (url: string, accessToken: string, start: number, count: nu
     .set('Authorization', 'Bearer ' + accessToken)
     .expect(200)
     .expect('Content-Type', /json/)
+}
+
+function getAccountVideos (url: string, accessToken: string, accountId: number | string, start: number, count: number, sort?: string) {
+  const path = '/api/v1/accounts/' + accountId + '/videos'
+
+  return makeGetRequest({
+    url,
+    path,
+    query: {
+      start,
+      count,
+      sort
+    },
+    token: accessToken,
+    statusCodeExpected: 200
+  })
+}
+
+function getVideoChannelVideos (
+  url: string,
+  accessToken: string,
+  videoChannelId: number | string,
+  start: number,
+  count: number,
+  sort?: string
+) {
+  const path = '/api/v1/video-channels/' + videoChannelId + '/videos'
+
+  return makeGetRequest({
+    url,
+    path,
+    query: {
+      start,
+      count,
+      sort
+    },
+    token: accessToken,
+    statusCodeExpected: 200
+  })
 }
 
 function getVideosListPagination (url: string, start: number, count: number, sort?: string) {
@@ -200,6 +251,18 @@ function searchVideo (url: string, search: string) {
 
   return req.expect(200)
     .expect('Content-Type', /json/)
+}
+
+function searchVideoWithToken (url: string, search: string, token: string) {
+  const path = '/api/v1/videos'
+  const req = request(url)
+    .get(path + '/search')
+    .set('Authorization', 'Bearer ' + token)
+    .query({ search })
+    .set('Accept', 'application/json')
+
+  return req.expect(200)
+            .expect('Content-Type', /json/)
 }
 
 function searchVideoWithPagination (url: string, search: string, start: number, count: number, sort?: string) {
@@ -260,7 +323,7 @@ async function uploadVideo (url: string, accessToken: string, videoAttributesArg
     name: 'my super video',
     category: 5,
     licence: 4,
-    language: 3,
+    language: 'zh',
     channelId: defaultChannelId,
     nsfw: true,
     description: 'my super description',
@@ -322,6 +385,7 @@ function updateVideo (url: string, accessToken: string, id: number | string, att
   if (attributes.description) body['description'] = attributes.description
   if (attributes.tags) body['tags'] = attributes.tags
   if (attributes.privacy) body['privacy'] = attributes.privacy
+  if (attributes.channelId) body['channelId'] = attributes.channelId
 
   // Upload request
   if (attributes.thumbnailfile || attributes.previewfile) {
@@ -379,7 +443,7 @@ async function completeVideoCheck (
     name: string
     category: number
     licence: number
-    language: number
+    language: string
     nsfw: boolean
     commentsEnabled: boolean
     description: string
@@ -413,38 +477,43 @@ async function completeVideoCheck (
 
   expect(video.name).to.equal(attributes.name)
   expect(video.category.id).to.equal(attributes.category)
-  expect(video.category.label).to.equal(VIDEO_CATEGORIES[attributes.category] || 'Misc')
+  expect(video.category.label).to.equal(attributes.category !== null ? VIDEO_CATEGORIES[attributes.category] : 'Misc')
   expect(video.licence.id).to.equal(attributes.licence)
-  expect(video.licence.label).to.equal(VIDEO_LICENCES[attributes.licence] || 'Unknown')
+  expect(video.licence.label).to.equal(attributes.licence !== null ? VIDEO_LICENCES[attributes.licence] : 'Unknown')
   expect(video.language.id).to.equal(attributes.language)
-  expect(video.language.label).to.equal(VIDEO_LANGUAGES[attributes.language] || 'Unknown')
+  expect(video.language.label).to.equal(attributes.language !== null ? VIDEO_LANGUAGES[attributes.language] : 'Unknown')
+  expect(video.privacy.id).to.deep.equal(attributes.privacy)
+  expect(video.privacy.label).to.deep.equal(VIDEO_PRIVACIES[attributes.privacy])
   expect(video.nsfw).to.equal(attributes.nsfw)
   expect(video.description).to.equal(attributes.description)
+  expect(video.account.id).to.be.a('number')
+  expect(video.account.uuid).to.be.a('string')
   expect(video.account.host).to.equal(attributes.account.host)
   expect(video.account.name).to.equal(attributes.account.name)
+  expect(video.channel.displayName).to.equal(attributes.channel.name)
+  expect(video.channel.name).to.have.lengthOf(36)
   expect(video.likes).to.equal(attributes.likes)
   expect(video.dislikes).to.equal(attributes.dislikes)
   expect(video.isLocal).to.equal(attributes.isLocal)
   expect(video.duration).to.equal(attributes.duration)
   expect(dateIsValid(video.createdAt)).to.be.true
+  expect(dateIsValid(video.publishedAt)).to.be.true
   expect(dateIsValid(video.updatedAt)).to.be.true
 
   const res = await getVideo(url, video.uuid)
-  const videoDetails = res.body
+  const videoDetails: VideoDetails = res.body
 
   expect(videoDetails.files).to.have.lengthOf(attributes.files.length)
   expect(videoDetails.tags).to.deep.equal(attributes.tags)
-  expect(videoDetails.privacy.id).to.deep.equal(attributes.privacy)
-  expect(videoDetails.privacy.label).to.deep.equal(VIDEO_PRIVACIES[attributes.privacy])
   expect(videoDetails.account.name).to.equal(attributes.account.name)
   expect(videoDetails.account.host).to.equal(attributes.account.host)
-  expect(videoDetails.commentsEnabled).to.equal(attributes.commentsEnabled)
-
   expect(videoDetails.channel.displayName).to.equal(attributes.channel.name)
   expect(videoDetails.channel.name).to.have.lengthOf(36)
+  expect(videoDetails.channel.host).to.equal(attributes.account.host)
   expect(videoDetails.channel.isLocal).to.equal(attributes.channel.isLocal)
-  expect(dateIsValid(videoDetails.channel.createdAt)).to.be.true
-  expect(dateIsValid(videoDetails.channel.updatedAt)).to.be.true
+  expect(dateIsValid(videoDetails.channel.createdAt.toString())).to.be.true
+  expect(dateIsValid(videoDetails.channel.updatedAt.toString())).to.be.true
+  expect(videoDetails.commentsEnabled).to.equal(attributes.commentsEnabled)
 
   for (const attributeFile of attributes.files) {
     const file = videoDetails.files.find(f => f.resolution.id === attributeFile.resolution)
@@ -489,6 +558,9 @@ export {
   getVideoPrivacies,
   getVideoLanguages,
   getMyVideos,
+  getAccountVideos,
+  getVideoChannelVideos,
+  searchVideoWithToken,
   getVideo,
   getVideoWithToken,
   getVideosList,
@@ -498,6 +570,7 @@ export {
   searchVideo,
   searchVideoWithPagination,
   searchVideoWithSort,
+  getVideosListWithToken,
   uploadVideo,
   updateVideo,
   rateVideo,

@@ -1,6 +1,6 @@
 import {
   AllowNull, BeforeDestroy, BelongsTo, Column, CreatedAt, DefaultScope, ForeignKey, HasMany, Is, Model, Scopes, Table,
-  UpdatedAt, Default
+  UpdatedAt, Default, DataType
 } from 'sequelize-typescript'
 import { ActivityPubActor } from '../../../shared/models/activitypub'
 import { VideoChannel } from '../../../shared/models/videos'
@@ -14,6 +14,7 @@ import { AccountModel } from '../account/account'
 import { ActorModel } from '../activitypub/actor'
 import { getSort, throwIfNotValid } from '../utils'
 import { VideoModel } from './video'
+import { CONSTRAINTS_FIELDS } from '../../initializers'
 
 enum ScopeNames {
   WITH_ACCOUNT = 'WITH_ACCOUNT',
@@ -73,13 +74,13 @@ export class VideoChannelModel extends Model<VideoChannelModel> {
   @AllowNull(true)
   @Default(null)
   @Is('VideoChannelDescription', value => throwIfNotValid(value, isVideoChannelDescriptionValid, 'description'))
-  @Column
+  @Column(DataType.STRING(CONSTRAINTS_FIELDS.VIDEO_CHANNELS.DESCRIPTION.max))
   description: string
 
   @AllowNull(true)
   @Default(null)
   @Is('VideoChannelSupport', value => throwIfNotValid(value, isVideoChannelSupportValid, 'support'))
-  @Column
+  @Column(DataType.STRING(CONSTRAINTS_FIELDS.VIDEO_CHANNELS.SUPPORT.max))
   support: string
 
   @CreatedAt
@@ -108,7 +109,7 @@ export class VideoChannelModel extends Model<VideoChannelModel> {
     foreignKey: {
       allowNull: false
     },
-    onDelete: 'CASCADE'
+    hooks: true
   })
   Account: AccountModel
 
@@ -234,17 +235,26 @@ export class VideoChannelModel extends Model<VideoChannelModel> {
 
   toFormattedJSON (): VideoChannel {
     const actor = this.Actor.toFormattedJSON()
-    const account = {
+    const videoChannel = {
       id: this.id,
       displayName: this.name,
       description: this.description,
       support: this.support,
       isLocal: this.Actor.isOwned(),
       createdAt: this.createdAt,
-      updatedAt: this.updatedAt
+      updatedAt: this.updatedAt,
+      ownerAccount: undefined,
+      videos: undefined
     }
 
-    return Object.assign(actor, account)
+    if (this.Account) {
+      videoChannel.ownerAccount = {
+        id: this.Account.id,
+        uuid: this.Account.Actor.uuid
+      }
+    }
+
+    return Object.assign(actor, videoChannel)
   }
 
   toActivityPubObject (): ActivityPubActor {

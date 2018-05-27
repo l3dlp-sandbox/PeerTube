@@ -5,7 +5,7 @@ import { VideoChannel } from './video-channel.model'
 import { VideoPrivacy } from './video-privacy.enum'
 
 export interface VideoConstant <T> {
-  id: number
+  id: T
   label: string
 }
 
@@ -22,9 +22,11 @@ export interface Video {
   uuid: string
   createdAt: Date | string
   updatedAt: Date | string
+  publishedAt: Date | string
   category: VideoConstant<number>
   licence: VideoConstant<number>
-  language: VideoConstant<number>
+  language: VideoConstant<string>
+  privacy: VideoConstant<VideoPrivacy>
   description: string
   duration: number
   isLocal: boolean
@@ -38,6 +40,18 @@ export interface Video {
   nsfw: boolean
 
   account: {
+    id: number
+    uuid: string
+    name: string
+    displayName: string
+    url: string
+    host: string
+    avatar: Avatar
+  }
+
+  channel: {
+    id: number
+    uuid: string
     name: string
     displayName: string
     url: string
@@ -47,7 +61,6 @@ export interface Video {
 }
 
 export interface VideoDetails extends Video {
-  privacy: VideoConstant<VideoPrivacy>
   descriptionPath: string
   support: string
   channel: VideoChannel

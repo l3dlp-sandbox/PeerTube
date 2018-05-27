@@ -1,9 +1,10 @@
 import 'express-validator'
 import * as validator from 'validator'
 import { UserRole } from '../../../shared'
-import { CONSTRAINTS_FIELDS } from '../../initializers'
+import { CONSTRAINTS_FIELDS, NSFW_POLICY_TYPES } from '../../initializers'
 
 import { exists, isFileValid } from './misc'
+import { values } from 'lodash'
 
 const USERS_CONSTRAINTS_FIELDS = CONSTRAINTS_FIELDS.USERS
 
@@ -21,6 +22,10 @@ function isUserUsernameValid (value: string) {
   return exists(value) && validator.matches(value, new RegExp(`^[a-z0-9._]{${min},${max}}$`))
 }
 
+function isUserDisplayNameValid (value: string) {
+  return value === null || (exists(value) && validator.isLength(value, CONSTRAINTS_FIELDS.USERS.NAME))
+}
+
 function isUserDescriptionValid (value: string) {
   return value === null || (exists(value) && validator.isLength(value, CONSTRAINTS_FIELDS.USERS.DESCRIPTION))
 }
@@ -29,8 +34,9 @@ function isBoolean (value: any) {
   return typeof value === 'boolean' || (typeof value === 'string' && validator.isBoolean(value))
 }
 
-function isUserDisplayNSFWValid (value: any) {
-  return isBoolean(value)
+const nsfwPolicies = values(NSFW_POLICY_TYPES)
+function isUserNSFWPolicyValid (value: any) {
+  return exists(value) && nsfwPolicies.indexOf(value) !== -1
 }
 
 function isUserAutoPlayVideoValid (value: any) {
@@ -56,8 +62,9 @@ export {
   isUserRoleValid,
   isUserVideoQuotaValid,
   isUserUsernameValid,
-  isUserDisplayNSFWValid,
+  isUserNSFWPolicyValid,
   isUserAutoPlayVideoValid,
+  isUserDisplayNameValid,
   isUserDescriptionValid,
   isAvatarFile
 }

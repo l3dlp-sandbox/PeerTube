@@ -4,8 +4,10 @@ import { UserRight } from '../../../shared'
 import { isAccountIdExist } from '../../helpers/custom-validators/accounts'
 import { isIdOrUUIDValid } from '../../helpers/custom-validators/misc'
 import {
-  isVideoChannelDescriptionValid, isVideoChannelExist,
-  isVideoChannelNameValid, isVideoChannelSupportValid
+  isVideoChannelDescriptionValid,
+  isVideoChannelExist,
+  isVideoChannelNameValid,
+  isVideoChannelSupportValid
 } from '../../helpers/custom-validators/video-channels'
 import { logger } from '../../helpers/logger'
 import { UserModel } from '../../models/account/user'
@@ -26,7 +28,7 @@ const listVideoAccountChannelsValidator = [
 ]
 
 const videoChannelsAddValidator = [
-  body('name').custom(isVideoChannelNameValid).withMessage('Should have a valid name'),
+  body('displayName').custom(isVideoChannelNameValid).withMessage('Should have a valid display name'),
   body('description').optional().custom(isVideoChannelDescriptionValid).withMessage('Should have a valid description'),
   body('support').optional().custom(isVideoChannelSupportValid).withMessage('Should have a valid support text'),
 
@@ -41,7 +43,7 @@ const videoChannelsAddValidator = [
 
 const videoChannelsUpdateValidator = [
   param('id').custom(isIdOrUUIDValid).not().isEmpty().withMessage('Should have a valid id'),
-  body('name').optional().custom(isVideoChannelNameValid).withMessage('Should have a valid name'),
+  body('displayName').optional().custom(isVideoChannelNameValid).withMessage('Should have a valid display name'),
   body('description').optional().custom(isVideoChannelDescriptionValid).withMessage('Should have a valid description'),
   body('support').optional().custom(isVideoChannelSupportValid).withMessage('Should have a valid support text'),
 
@@ -77,7 +79,6 @@ const videoChannelsRemoveValidator = [
     if (areValidationErrors(req, res)) return
     if (!await isVideoChannelExist(req.params.id, res)) return
 
-    // Check if the user who did the request is able to delete the video
     if (!checkUserCanDeleteVideoChannel(res.locals.oauth.token.User, res.locals.videoChannel, res)) return
     if (!await checkVideoChannelIsNotTheLastOne(res)) return
 
@@ -92,6 +93,7 @@ const videoChannelsGetValidator = [
     logger.debug('Checking videoChannelsGet parameters', { parameters: req.params })
 
     if (areValidationErrors(req, res)) return
+
     if (!await isVideoChannelExist(req.params.id, res)) return
 
     return next()

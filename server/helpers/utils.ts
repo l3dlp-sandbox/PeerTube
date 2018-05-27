@@ -1,67 +1,14 @@
-import * as express from 'express'
-import * as multer from 'multer'
 import { Model } from 'sequelize-typescript'
+import * as ipaddr from 'ipaddr.js'
+const isCidr = require('is-cidr')
 import { ResultList } from '../../shared'
 import { VideoResolution } from '../../shared/models/videos'
-import { CONFIG, REMOTE_SCHEME } from '../initializers'
+import { CONFIG } from '../initializers'
 import { UserModel } from '../models/account/user'
 import { ActorModel } from '../models/activitypub/actor'
 import { ApplicationModel } from '../models/application/application'
 import { pseudoRandomBytesPromise } from './core-utils'
 import { logger } from './logger'
-
-function getHostWithPort (host: string) {
-  const splitted = host.split(':')
-
-  // The port was not specified
-  if (splitted.length === 1) {
-    if (REMOTE_SCHEME.HTTP === 'https') return host + ':443'
-
-    return host + ':80'
-  }
-
-  return host
-}
-
-function badRequest (req: express.Request, res: express.Response, next: express.NextFunction) {
-  return res.type('json').status(400).end()
-}
-
-function createReqFiles (
-  fieldNames: string[],
-  mimeTypes: { [ id: string ]: string },
-  destinations: { [ fieldName: string ]: string }
-) {
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, destinations[file.fieldname])
-    },
-
-    filename: async (req, file, cb) => {
-      const extension = mimeTypes[file.mimetype]
-      let randomString = ''
-
-      try {
-        randomString = await generateRandomString(16)
-      } catch (err) {
-        logger.error('Cannot generate random string for file name.', { err })
-        randomString = 'fake-random-string'
-      }
-
-      cb(null, randomString + extension)
-    }
-  })
-
-  const fields = []
-  for (const fieldName of fieldNames) {
-    fields.push({
-      name: fieldName,
-      maxCount: 1
-    })
-  }
-
-  return multer({ storage }).fields(fields)
-}
 
 async function generateRandomString (size: number) {
   const raw = await pseudoRandomBytesPromise(size)
@@ -101,6 +48,39 @@ async function isSignupAllowed () {
   const totalUsers = await UserModel.countTotal()
 
   return totalUsers < CONFIG.SIGNUP.LIMIT
+}
+
+function isSignupAllowedForCurrentIP (ip: string) {
+  const addr = ipaddr.parse(ip)
+  let excludeList = [ 'blacklist' ]
+  let matched: string
+
+  // if there is a valid, non-empty whitelist, we exclude all unknown adresses too
+  if (CONFIG.SIGNUP.FILTERS.CIDR.WHITELIST.filter(cidr => isCidr(cidr)).length > 0) {
+    excludeList.push('unknown')
+  }
+
+  if (addr.kind() === 'ipv4') {
+    const addrV4 = ipaddr.IPv4.parse(ip)
+    const rangeList = {
+      whitelist: CONFIG.SIGNUP.FILTERS.CIDR.WHITELIST.filter(cidr => isCidr.v4(cidr))
+                                                .map(cidr => ipaddr.IPv4.parseCIDR(cidr)),
+      blacklist: CONFIG.SIGNUP.FILTERS.CIDR.BLACKLIST.filter(cidr => isCidr.v4(cidr))
+                                                .map(cidr => ipaddr.IPv4.parseCIDR(cidr))
+    }
+    matched = ipaddr.subnetMatch(addrV4, rangeList, 'unknown')
+  } else if (addr.kind() === 'ipv6') {
+    const addrV6 = ipaddr.IPv6.parse(ip)
+    const rangeList = {
+      whitelist: CONFIG.SIGNUP.FILTERS.CIDR.WHITELIST.filter(cidr => isCidr.v6(cidr))
+                                                .map(cidr => ipaddr.IPv6.parseCIDR(cidr)),
+      blacklist: CONFIG.SIGNUP.FILTERS.CIDR.BLACKLIST.filter(cidr => isCidr.v6(cidr))
+                                                .map(cidr => ipaddr.IPv6.parseCIDR(cidr))
+    }
+    matched = ipaddr.subnetMatch(addrV6, rangeList, 'unknown')
+  }
+
+  return !excludeList.includes(matched)
 }
 
 function computeResolutionsToTranscode (videoFileHeight: number) {
@@ -151,14 +131,12 @@ type SortType = { sortModel: any, sortValue: string }
 // ---------------------------------------------------------------------------
 
 export {
-  badRequest,
   generateRandomString,
   getFormattedObjects,
   isSignupAllowed,
+  isSignupAllowedForCurrentIP,
   computeResolutionsToTranscode,
   resetSequelizeInstance,
   getServerActor,
-  SortType,
-  getHostWithPort,
-  createReqFiles
+  SortType
 }

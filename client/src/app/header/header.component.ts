@@ -1,5 +1,6 @@
+import { filter, map } from 'rxjs/operators'
 import { Component, OnInit } from '@angular/core'
-import { Router } from '@angular/router'
+import { NavigationEnd, Router } from '@angular/router'
 import { getParameterByName } from '../shared/misc/utils'
 
 @Component({
@@ -14,8 +15,13 @@ export class HeaderComponent implements OnInit {
   constructor (private router: Router) {}
 
   ngOnInit () {
-    const searchQuery = getParameterByName('search', window.location.href)
-    if (searchQuery) this.searchValue = searchQuery
+    this.router.events
+        .pipe(
+          filter(e => e instanceof NavigationEnd),
+          map(() => getParameterByName('search', window.location.href)),
+          filter(searchQuery => !!searchQuery)
+        )
+        .subscribe(searchQuery => this.searchValue = searchQuery)
   }
 
   doSearch () {

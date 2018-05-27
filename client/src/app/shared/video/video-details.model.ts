@@ -1,18 +1,9 @@
-import {
-  UserRight,
-  VideoChannel,
-  VideoDetails as VideoDetailsServerModel,
-  VideoFile,
-  VideoPrivacy,
-  VideoResolution
-} from '../../../../../shared'
+import { UserRight, VideoChannel, VideoDetails as VideoDetailsServerModel, VideoFile } from '../../../../../shared'
 import { Account } from '../../../../../shared/models/actors'
-import { VideoConstant } from '../../../../../shared/models/videos/video.model'
 import { AuthUser } from '../../core'
 import { Video } from '../../shared/video/video.model'
 
 export class VideoDetails extends Video implements VideoDetailsServerModel {
-  privacy: VideoConstant<VideoPrivacy>
   descriptionPath: string
   support: string
   channel: VideoChannel
@@ -27,7 +18,6 @@ export class VideoDetails extends Video implements VideoDetailsServerModel {
   constructor (hash: VideoDetailsServerModel) {
     super(hash)
 
-    this.privacy = hash.privacy
     this.descriptionPath = hash.descriptionPath
     this.files = hash.files
     this.channel = hash.channel
@@ -37,21 +27,6 @@ export class VideoDetails extends Video implements VideoDetailsServerModel {
     this.commentsEnabled = hash.commentsEnabled
 
     this.buildLikeAndDislikePercents()
-  }
-
-  getAppropriateMagnetUri (actualDownloadSpeed = 0) {
-    if (this.files === undefined || this.files.length === 0) return ''
-    if (this.files.length === 1) return this.files[0].magnetUri
-
-    // Find first video that is good for our download speed (remember they are sorted)
-    let betterResolutionFile = this.files.find(f => actualDownloadSpeed > (f.size / this.duration))
-
-    // If the download speed is too bad, return the lowest resolution we have
-    if (betterResolutionFile === undefined) {
-      betterResolutionFile = this.files.find(f => f.resolution.id === VideoResolution.H_240P)
-    }
-
-    return betterResolutionFile.magnetUri
   }
 
   isRemovableBy (user: AuthUser) {

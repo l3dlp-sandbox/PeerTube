@@ -28,7 +28,7 @@ import {
 } from 'sequelize-typescript'
 import { VideoPrivacy, VideoResolution } from '../../../shared'
 import { VideoTorrentObject } from '../../../shared/models/activitypub/objects'
-import { Video, VideoDetails } from '../../../shared/models/videos'
+import { Video, VideoDetails, VideoFile } from '../../../shared/models/videos'
 import { VideoFilter } from '../../../shared/models/videos/video-query.type'
 import { activityPubCollection } from '../../helpers/activitypub'
 import {
@@ -95,63 +95,120 @@ enum ScopeNames {
 }
 
 @Scopes({
-  [ScopeNames.AVAILABLE_FOR_LIST]: (actorId: number, filter?: VideoFilter) => ({
-    where: {
-      id: {
-        [Sequelize.Op.notIn]: Sequelize.literal(
-          '(SELECT "videoBlacklist"."videoId" FROM "videoBlacklist")'
-        ),
-        [ Sequelize.Op.in ]: Sequelize.literal(
-          '(' +
+  [ScopeNames.AVAILABLE_FOR_LIST]: (options: {
+    actorId: number,
+    hideNSFW: boolean,
+    filter?: VideoFilter,
+    withFiles?: boolean,
+    accountId?: number,
+    videoChannelId?: number
+  }) => {
+    const accountInclude = {
+      attributes: [ 'id', 'name' ],
+      model: AccountModel.unscoped(),
+      required: true,
+      where: {},
+      include: [
+        {
+          attributes: [ 'id', 'uuid', 'preferredUsername', 'url', 'serverId', 'avatarId' ],
+          model: ActorModel.unscoped(),
+          required: true,
+          where: VideoModel.buildActorWhereWithFilter(options.filter),
+          include: [
+            {
+              attributes: [ 'host' ],
+              model: ServerModel.unscoped(),
+              required: false
+            },
+            {
+              model: AvatarModel.unscoped(),
+              required: false
+            }
+          ]
+        }
+      ]
+    }
+
+    const videoChannelInclude = {
+      attributes: [ 'name', 'description', 'id' ],
+      model: VideoChannelModel.unscoped(),
+      required: true,
+      where: {},
+      include: [
+        {
+          attributes: [ 'uuid', 'preferredUsername', 'url', 'serverId', 'avatarId' ],
+          model: ActorModel.unscoped(),
+          required: true,
+          include: [
+            {
+              attributes: [ 'host' ],
+              model: ServerModel.unscoped(),
+              required: false
+            },
+            {
+              model: AvatarModel.unscoped(),
+              required: false
+            }
+          ]
+        },
+        accountInclude
+      ]
+    }
+
+    // Force actorId to be a number to avoid SQL injections
+    const actorIdNumber = parseInt(options.actorId.toString(), 10)
+    const query: IFindOptions<VideoModel> = {
+      where: {
+        id: {
+          [Sequelize.Op.notIn]: Sequelize.literal(
+            '(SELECT "videoBlacklist"."videoId" FROM "videoBlacklist")'
+          ),
+          [ Sequelize.Op.in ]: Sequelize.literal(
+            '(' +
             'SELECT "videoShare"."videoId" AS "id" FROM "videoShare" ' +
             'INNER JOIN "actorFollow" ON "actorFollow"."targetActorId" = "videoShare"."actorId" ' +
-            'WHERE "actorFollow"."actorId" = ' + parseInt(actorId.toString(), 10) +
+            'WHERE "actorFollow"."actorId" = ' + actorIdNumber +
             ' UNION ' +
             'SELECT "video"."id" AS "id" FROM "video" ' +
             'INNER JOIN "videoChannel" ON "videoChannel"."id" = "video"."channelId" ' +
             'INNER JOIN "account" ON "account"."id" = "videoChannel"."accountId" ' +
             'INNER JOIN "actor" ON "account"."actorId" = "actor"."id" ' +
             'LEFT JOIN "actorFollow" ON "actorFollow"."targetActorId" = "actor"."id" ' +
-            'WHERE "actor"."serverId" IS NULL OR "actorFollow"."actorId" = ' + parseInt(actorId.toString(), 10) +
-          ')'
-        )
+            'WHERE "actor"."serverId" IS NULL OR "actorFollow"."actorId" = ' + actorIdNumber +
+            ')'
+          )
+        },
+        privacy: VideoPrivacy.PUBLIC
       },
-      privacy: VideoPrivacy.PUBLIC
-    },
-    include: [
-      {
-        attributes: [ 'name', 'description' ],
-        model: VideoChannelModel.unscoped(),
-        required: true,
-        include: [
-          {
-            attributes: [ 'name' ],
-            model: AccountModel.unscoped(),
-            required: true,
-            include: [
-              {
-                attributes: [ 'preferredUsername', 'url', 'serverId' ],
-                model: ActorModel.unscoped(),
-                required: true,
-                where: VideoModel.buildActorWhereWithFilter(filter),
-                include: [
-                  {
-                    attributes: [ 'host' ],
-                    model: ServerModel.unscoped(),
-                    required: false
-                  },
-                  {
-                    model: AvatarModel.unscoped(),
-                    required: false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
+      include: [ videoChannelInclude ]
+    }
+
+    if (options.withFiles === true) {
+      query.include.push({
+        model: VideoFileModel.unscoped(),
+        required: true
+      })
+    }
+
+    // Hide nsfw videos?
+    if (options.hideNSFW === true) {
+      query.where['nsfw'] = false
+    }
+
+    if (options.accountId) {
+      accountInclude.where = {
+        id: options.accountId
       }
-    ]
-  }),
+    }
+
+    if (options.videoChannelId) {
+      videoChannelInclude.where = {
+        id: options.videoChannelId
+      }
+    }
+
+    return query
+  },
   [ScopeNames.WITH_ACCOUNT_DETAILS]: {
     include: [
       {
@@ -214,6 +271,7 @@ enum ScopeNames {
   [ScopeNames.WITH_SHARES]: {
     include: [
       {
+        ['separate' as any]: true,
         model: () => VideoShareModel.unscoped()
       }
     ]
@@ -221,6 +279,7 @@ enum ScopeNames {
   [ScopeNames.WITH_RATES]: {
     include: [
       {
+        ['separate' as any]: true,
         model: () => AccountVideoRateModel,
         include: [
           {
@@ -240,6 +299,7 @@ enum ScopeNames {
   [ScopeNames.WITH_COMMENTS]: {
     include: [
       {
+        ['separate' as any]: true,
         model: () => VideoCommentModel.unscoped()
       }
     ]
@@ -306,8 +366,8 @@ export class VideoModel extends Model<VideoModel> {
   @AllowNull(true)
   @Default(null)
   @Is('VideoLanguage', value => throwIfNotValid(value, isVideoLanguageValid, 'language'))
-  @Column
-  language: number
+  @Column(DataType.STRING(CONSTRAINTS_FIELDS.VIDEOS.LANGUAGE.max))
+  language: string
 
   @AllowNull(false)
   @Is('VideoPrivacy', value => throwIfNotValid(value, isVideoPrivacyValid, 'privacy'))
@@ -376,6 +436,11 @@ export class VideoModel extends Model<VideoModel> {
   @UpdatedAt
   updatedAt: Date
 
+  @AllowNull(false)
+  @Default(Sequelize.NOW)
+  @Column
+  publishedAt: Date
+
   @ForeignKey(() => VideoChannelModel)
   @Column
   channelId: number
@@ -384,7 +449,7 @@ export class VideoModel extends Model<VideoModel> {
     foreignKey: {
       allowNull: true
     },
-    onDelete: 'cascade'
+    hooks: true
   })
   VideoChannel: VideoChannelModel
 
@@ -464,9 +529,11 @@ export class VideoModel extends Model<VideoModel> {
     return undefined
   }
 
-  @AfterDestroy
+  @BeforeDestroy
   static async removeFilesAndSendDelete (instance: VideoModel) {
     const tasks: Promise<any>[] = []
+
+    logger.debug('Removing files of video %s.', instance.url)
 
     tasks.push(instance.removeThumbnail())
 
@@ -484,10 +551,13 @@ export class VideoModel extends Model<VideoModel> {
       })
     }
 
-    return Promise.all(tasks)
+    // Do not wait video deletion because we could be in a transaction
+    Promise.all(tasks)
       .catch(err => {
         logger.error('Some errors when removing files of video %s in after destroy hook.', instance.uuid, { err })
       })
+
+    return undefined
   }
 
   static list () {
@@ -624,8 +694,8 @@ export class VideoModel extends Model<VideoModel> {
     })
   }
 
-  static listUserVideosForApi (userId: number, start: number, count: number, sort: string) {
-    const query = {
+  static listAccountVideosForApi (accountId: number, start: number, count: number, sort: string, hideNSFW: boolean, withFiles = false) {
+    const query: IFindOptions<VideoModel> = {
       offset: start,
       limit: count,
       order: getSort(sort),
@@ -637,13 +707,26 @@ export class VideoModel extends Model<VideoModel> {
             {
               model: AccountModel,
               where: {
-                userId
+                id: accountId
               },
               required: true
             }
           ]
         }
       ]
+    }
+
+    if (withFiles === true) {
+      query.include.push({
+        model: VideoFileModel.unscoped(),
+        required: true
+      })
+    }
+
+    if (hideNSFW === true) {
+      query.where = {
+        nsfw: false
+      }
     }
 
     return VideoModel.findAndCountAll(query).then(({ rows, count }) => {
@@ -654,16 +737,37 @@ export class VideoModel extends Model<VideoModel> {
     })
   }
 
-  static async listForApi (start: number, count: number, sort: string, filter?: VideoFilter) {
+  static async listForApi (options: {
+    start: number,
+    count: number,
+    sort: string,
+    hideNSFW: boolean,
+    withFiles: boolean,
+    filter?: VideoFilter,
+    accountId?: number,
+    videoChannelId?: number
+  }) {
     const query = {
-      offset: start,
-      limit: count,
-      order: getSort(sort)
+      offset: options.start,
+      limit: options.count,
+      order: getSort(options.sort)
     }
 
     const serverActor = await getServerActor()
+    const scopes = {
+      method: [
+        ScopeNames.AVAILABLE_FOR_LIST, {
+          actorId: serverActor.id,
+          hideNSFW: options.hideNSFW,
+          filter: options.filter,
+          withFiles: options.withFiles,
+          accountId: options.accountId,
+          videoChannelId: options.videoChannelId
+        }
+      ]
+    }
 
-    return VideoModel.scope({ method: [ ScopeNames.AVAILABLE_FOR_LIST, serverActor.id, filter ] })
+    return VideoModel.scope(scopes)
       .findAndCountAll(query)
       .then(({ rows, count }) => {
         return {
@@ -673,7 +777,7 @@ export class VideoModel extends Model<VideoModel> {
       })
   }
 
-  static async searchAndPopulateAccountAndServerAndTags (value: string, start: number, count: number, sort: string) {
+  static async searchAndPopulateAccountAndServer (value: string, start: number, count: number, sort: string, hideNSFW: boolean) {
     const query: IFindOptions<VideoModel> = {
       offset: start,
       limit: count,
@@ -686,12 +790,17 @@ export class VideoModel extends Model<VideoModel> {
             }
           },
           {
-            preferredUsername: Sequelize.where(Sequelize.col('preferredUsername'), {
+            preferredUsernameChannel: Sequelize.where(Sequelize.col('VideoChannel->Actor.preferredUsername'), {
               [ Sequelize.Op.iLike ]: '%' + value + '%'
             })
           },
           {
-            host: Sequelize.where(Sequelize.col('host'), {
+            preferredUsernameAccount: Sequelize.where(Sequelize.col('VideoChannel->Account->Actor.preferredUsername'), {
+              [ Sequelize.Op.iLike ]: '%' + value + '%'
+            })
+          },
+          {
+            host: Sequelize.where(Sequelize.col('VideoChannel->Account->Actor->Server.host'), {
               [ Sequelize.Op.iLike ]: '%' + value + '%'
             })
           }
@@ -700,9 +809,18 @@ export class VideoModel extends Model<VideoModel> {
     }
 
     const serverActor = await getServerActor()
+    const scopes = {
+      method: [
+        ScopeNames.AVAILABLE_FOR_LIST, {
+          actorId: serverActor.id,
+          hideNSFW
+        }
+      ]
+    }
 
-    return VideoModel.scope({ method: [ ScopeNames.AVAILABLE_FOR_LIST, serverActor.id ] })
-      .findAndCountAll(query).then(({ rows, count }) => {
+    return VideoModel.scope(scopes)
+      .findAndCountAll(query)
+      .then(({ rows, count }) => {
         return {
           data: rows,
           total: count
@@ -843,11 +961,18 @@ export class VideoModel extends Model<VideoModel> {
     return licenceLabel
   }
 
-  private static getLanguageLabel (id: number) {
+  private static getLanguageLabel (id: string) {
     let languageLabel = VIDEO_LANGUAGES[id]
     if (!languageLabel) languageLabel = 'Unknown'
 
     return languageLabel
+  }
+
+  private static getPrivacyLabel (id: number) {
+    let privacyLabel = VIDEO_PRIVACIES[id]
+    if (!privacyLabel) privacyLabel = 'Unknown'
+
+    return privacyLabel
   }
 
   getOriginalFile () {
@@ -903,8 +1028,11 @@ export class VideoModel extends Model<VideoModel> {
     return join(CONFIG.STORAGE.VIDEOS_DIR, this.getVideoFilename(videoFile))
   }
 
-  createTorrentAndSetInfoHash = async function (videoFile: VideoFileModel) {
+  async createTorrentAndSetInfoHash (videoFile: VideoFileModel) {
     const options = {
+      // Keep the extname, it's used by the client to stream the file inside a web browser
+      name: `${this.name} ${videoFile.resolution}p${videoFile.extname}`,
+      createdBy: 'PeerTube',
       announceList: [
         [ CONFIG.WEBSERVER.WS + '://' + CONFIG.WEBSERVER.HOSTNAME + ':' + CONFIG.WEBSERVER.PORT + '/tracker/socket' ],
         [ CONFIG.WEBSERVER.URL + '/tracker/announce' ]
@@ -939,6 +1067,7 @@ export class VideoModel extends Model<VideoModel> {
 
   toFormattedJSON (): Video {
     const formattedAccount = this.VideoChannel.Account.toFormattedJSON()
+    const formattedVideoChannel = this.VideoChannel.toFormattedJSON()
 
     return {
       id: this.id,
@@ -956,6 +1085,10 @@ export class VideoModel extends Model<VideoModel> {
         id: this.language,
         label: VideoModel.getLanguageLabel(this.language)
       },
+      privacy: {
+        id: this.privacy,
+        label: VideoModel.getPrivacyLabel(this.privacy)
+      },
       nsfw: this.nsfw,
       description: this.getTruncatedDescription(),
       isLocal: this.isOwned(),
@@ -968,12 +1101,24 @@ export class VideoModel extends Model<VideoModel> {
       embedPath: this.getEmbedPath(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      publishedAt: this.publishedAt,
       account: {
+        id: formattedAccount.id,
+        uuid: formattedAccount.uuid,
         name: formattedAccount.name,
         displayName: formattedAccount.displayName,
         url: formattedAccount.url,
         host: formattedAccount.host,
         avatar: formattedAccount.avatar
+      },
+      channel: {
+        id: formattedVideoChannel.id,
+        uuid: formattedVideoChannel.uuid,
+        name: formattedVideoChannel.name,
+        displayName: formattedVideoChannel.displayName,
+        url: formattedVideoChannel.url,
+        host: formattedVideoChannel.host,
+        avatar: formattedVideoChannel.avatar
       }
     }
   }
@@ -981,48 +1126,45 @@ export class VideoModel extends Model<VideoModel> {
   toFormattedDetailsJSON (): VideoDetails {
     const formattedJson = this.toFormattedJSON()
 
-    // Maybe our server is not up to date and there are new privacy settings since our version
-    let privacyLabel = VIDEO_PRIVACIES[this.privacy]
-    if (!privacyLabel) privacyLabel = 'Unknown'
-
     const detailsJson = {
-      privacy: {
-        id: this.privacy,
-        label: privacyLabel
-      },
       support: this.support,
       descriptionPath: this.getDescriptionPath(),
       channel: this.VideoChannel.toFormattedJSON(),
       account: this.VideoChannel.Account.toFormattedJSON(),
-      tags: map<TagModel, string>(this.Tags, 'name'),
+      tags: map(this.Tags, 'name'),
       commentsEnabled: this.commentsEnabled,
       files: []
     }
 
     // Format and sort video files
-    const { baseUrlHttp, baseUrlWs } = this.getBaseUrls()
-    detailsJson.files = this.VideoFiles
-      .map(videoFile => {
-        let resolutionLabel = videoFile.resolution + 'p'
-
-        return {
-          resolution: {
-            id: videoFile.resolution,
-            label: resolutionLabel
-          },
-          magnetUri: this.generateMagnetUri(videoFile, baseUrlHttp, baseUrlWs),
-          size: videoFile.size,
-          torrentUrl: this.getTorrentUrl(videoFile, baseUrlHttp),
-          fileUrl: this.getVideoFileUrl(videoFile, baseUrlHttp)
-        }
-      })
-      .sort((a, b) => {
-        if (a.resolution.id < b.resolution.id) return 1
-        if (a.resolution.id === b.resolution.id) return 0
-        return -1
-      })
+    detailsJson.files = this.getFormattedVideoFilesJSON()
 
     return Object.assign(formattedJson, detailsJson)
+  }
+
+  getFormattedVideoFilesJSON (): VideoFile[] {
+    const { baseUrlHttp, baseUrlWs } = this.getBaseUrls()
+
+    return this.VideoFiles
+        .map(videoFile => {
+          let resolutionLabel = videoFile.resolution + 'p'
+
+          return {
+            resolution: {
+              id: videoFile.resolution,
+              label: resolutionLabel
+            },
+            magnetUri: this.generateMagnetUri(videoFile, baseUrlHttp, baseUrlWs),
+            size: videoFile.size,
+            torrentUrl: this.getTorrentUrl(videoFile, baseUrlHttp),
+            fileUrl: this.getVideoFileUrl(videoFile, baseUrlHttp)
+          } as VideoFile
+        })
+        .sort((a, b) => {
+          if (a.resolution.id < b.resolution.id) return 1
+          if (a.resolution.id === b.resolution.id) return 0
+          return -1
+        })
   }
 
   toActivityPubObject (): VideoTorrentObject {
@@ -1037,7 +1179,7 @@ export class VideoModel extends Model<VideoModel> {
     let language
     if (this.language) {
       language = {
-        identifier: this.language + '',
+        identifier: this.language,
         name: VideoModel.getLanguageLabel(this.language)
       }
     }
@@ -1122,7 +1264,7 @@ export class VideoModel extends Model<VideoModel> {
       views: this.views,
       sensitive: this.nsfw,
       commentsEnabled: this.commentsEnabled,
-      published: this.createdAt.toISOString(),
+      published: this.publishedAt.toISOString(),
       updated: this.updatedAt.toISOString(),
       mediaType: 'text/markdown',
       content: this.getTruncatedDescription(),
@@ -1197,7 +1339,7 @@ export class VideoModel extends Model<VideoModel> {
     return peertubeTruncate(this.description, maxLength)
   }
 
-  optimizeOriginalVideofile = async function () {
+  async optimizeOriginalVideofile () {
     const videosDirectory = CONFIG.STORAGE.VIDEOS_DIR
     const newExtname = '.mp4'
     const inputVideoFile = this.getOriginalFile()
@@ -1234,7 +1376,7 @@ export class VideoModel extends Model<VideoModel> {
     }
   }
 
-  transcodeOriginalVideofile = async function (resolution: VideoResolution, isPortraitMode: boolean) {
+  async transcodeOriginalVideofile (resolution: VideoResolution, isPortraitMode: boolean) {
     const videosDirectory = CONFIG.STORAGE.VIDEOS_DIR
     const extname = '.mp4'
 

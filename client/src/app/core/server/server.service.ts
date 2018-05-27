@@ -1,12 +1,12 @@
+import { tap } from 'rxjs/operators'
 import { HttpClient } from '@angular/common/http'
 import { Injectable } from '@angular/core'
 import { peertubeLocalStorage } from '@app/shared/misc/peertube-local-storage'
-import 'rxjs/add/operator/do'
-import { ReplaySubject } from 'rxjs/ReplaySubject'
+import { ReplaySubject } from 'rxjs'
 import { ServerConfig } from '../../../../../shared'
 import { About } from '../../../../../shared/models/server/about.model'
-import { ServerStats } from '../../../../../shared/models/server/server-stats.model'
 import { environment } from '../../../environments/environment'
+import { VideoConstant, VideoPrivacy } from '../../../../../shared/models/videos'
 
 @Injectable()
 export class ServerService {
@@ -26,6 +26,7 @@ export class ServerService {
       shortDescription: 'PeerTube, a federated (ActivityPub) video streaming platform  ' +
                         'using P2P (BitTorrent) directly in the web browser with WebTorrent and Angular.',
       defaultClientRoute: '',
+      defaultNSFWPolicy: 'do_not_list' as 'do_not_list',
       customizations: {
         javascript: '',
         css: ''
@@ -33,7 +34,8 @@ export class ServerService {
     },
     serverVersion: 'Unknown',
     signup: {
-      allowed: false
+      allowed: false,
+      allowedForCurrentIP: false
     },
     transcoding: {
       enabledResolutions: []
@@ -57,10 +59,10 @@ export class ServerService {
       videoQuota: -1
     }
   }
-  private videoCategories: Array<{ id: number, label: string }> = []
-  private videoLicences: Array<{ id: number, label: string }> = []
-  private videoLanguages: Array<{ id: number, label: string }> = []
-  private videoPrivacies: Array<{ id: number, label: string }> = []
+  private videoCategories: Array<VideoConstant<number>> = []
+  private videoLicences: Array<VideoConstant<number>> = []
+  private videoLanguages: Array<VideoConstant<string>> = []
+  private videoPrivacies: Array<VideoConstant<VideoPrivacy>> = []
 
   constructor (private http: HttpClient) {
     this.loadConfigLocally()
@@ -68,12 +70,12 @@ export class ServerService {
 
   loadConfig () {
     this.http.get<ServerConfig>(ServerService.BASE_CONFIG_URL)
-      .do(this.saveConfigLocally)
-      .subscribe(data => {
-        this.config = data
+        .pipe(tap(this.saveConfigLocally))
+        .subscribe(data => {
+          this.config = data
 
-        this.configLoaded.next(true)
-      })
+          this.configLoaded.next(true)
+        })
   }
 
   loadVideoCategories () {
@@ -118,7 +120,7 @@ export class ServerService {
 
   private loadVideoAttributeEnum (
     attributeName: 'categories' | 'licences' | 'languages' | 'privacies',
-    hashToPopulate: { id: number, label: string }[],
+    hashToPopulate: VideoConstant<number | string>[],
     notifier: ReplaySubject<boolean>,
     sort = false
   ) {
@@ -127,7 +129,7 @@ export class ServerService {
          Object.keys(data)
                .forEach(dataKey => {
                  hashToPopulate.push({
-                   id: parseInt(dataKey, 10),
+                   id: dataKey,
                    label: data[dataKey]
                  })
                })

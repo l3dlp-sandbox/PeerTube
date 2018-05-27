@@ -7,8 +7,8 @@ import { isIdOrUUIDValid } from '../../helpers/custom-validators/misc'
 import {
   isAvatarFile,
   isUserAutoPlayVideoValid,
-  isUserDescriptionValid,
-  isUserDisplayNSFWValid,
+  isUserDescriptionValid, isUserDisplayNameValid,
+  isUserNSFWPolicyValid,
   isUserPasswordValid,
   isUserRoleValid,
   isUserUsernameValid,
@@ -16,8 +16,8 @@ import {
 } from '../../helpers/custom-validators/users'
 import { isVideoExist } from '../../helpers/custom-validators/videos'
 import { logger } from '../../helpers/logger'
-import { isSignupAllowed } from '../../helpers/utils'
-import { CONSTRAINTS_FIELDS } from '../../initializers'
+import { isSignupAllowed, isSignupAllowedForCurrentIP } from '../../helpers/utils'
+import { CONFIG, CONSTRAINTS_FIELDS } from '../../initializers'
 import { Redis } from '../../lib/redis'
 import { UserModel } from '../../models/account/user'
 import { areValidationErrors } from './utils'
@@ -98,10 +98,11 @@ const usersUpdateValidator = [
 ]
 
 const usersUpdateMeValidator = [
+  body('displayName').optional().custom(isUserDisplayNameValid).withMessage('Should have a valid display name'),
   body('description').optional().custom(isUserDescriptionValid).withMessage('Should have a valid description'),
   body('password').optional().custom(isUserPasswordValid).withMessage('Should have a valid password'),
   body('email').optional().isEmail().withMessage('Should have a valid email attribute'),
-  body('displayNSFW').optional().custom(isUserDisplayNSFWValid).withMessage('Should have a valid display Not Safe For Work attribute'),
+  body('nsfwPolicy').optional().custom(isUserNSFWPolicyValid).withMessage('Should have a valid display Not Safe For Work policy'),
   body('autoPlayVideo').optional().custom(isUserAutoPlayVideoValid).withMessage('Should have a valid automatically plays video attribute'),
 
   (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -176,6 +177,20 @@ const ensureUserRegistrationAllowed = [
   }
 ]
 
+const ensureUserRegistrationAllowedForIP = [
+  async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const allowed = isSignupAllowedForCurrentIP(req.ip)
+
+    if (allowed === false) {
+      return res.status(403)
+                .send({ error: 'You are not on a network authorized for registration.' })
+                .end()
+    }
+
+    return next()
+  }
+]
+
 const usersAskResetPasswordValidator = [
   body('email').isEmail().not().isEmpty().withMessage('Should have a valid email'),
 
@@ -229,6 +244,7 @@ export {
   usersUpdateMeValidator,
   usersVideoRatingValidator,
   ensureUserRegistrationAllowed,
+  ensureUserRegistrationAllowedForIP,
   usersGetValidator,
   usersUpdateMyAvatarValidator,
   usersAskResetPasswordValidator,

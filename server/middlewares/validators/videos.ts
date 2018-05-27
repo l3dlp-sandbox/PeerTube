@@ -2,10 +2,11 @@ import * as express from 'express'
 import 'express-validator'
 import { body, param, query } from 'express-validator/check'
 import { UserRight, VideoPrivacy } from '../../../shared'
-import { isBooleanValid, isIdOrUUIDValid, isIdValid, isUUIDValid } from '../../helpers/custom-validators/misc'
+import { isBooleanValid, isIdOrUUIDValid, isIdValid, isUUIDValid, toIntOrNull, toValueOrNull } from '../../helpers/custom-validators/misc'
 import {
   isVideoAbuseReasonValid,
   isVideoCategoryValid,
+  isVideoChannelOfAccountExist,
   isVideoDescriptionValid,
   isVideoExist,
   isVideoFile,
@@ -14,7 +15,8 @@ import {
   isVideoLicenceValid,
   isVideoNameValid,
   isVideoPrivacyValid,
-  isVideoRatingTypeValid, isVideoSupportValid,
+  isVideoRatingTypeValid,
+  isVideoSupportValid,
   isVideoTagsValid
 } from '../../helpers/custom-validators/videos'
 import { getDurationFromVideoFile } from '../../helpers/ffmpeg-utils'
@@ -22,7 +24,6 @@ import { logger } from '../../helpers/logger'
 import { CONSTRAINTS_FIELDS } from '../../initializers'
 import { UserModel } from '../../models/account/user'
 import { VideoModel } from '../../models/video/video'
-import { VideoChannelModel } from '../../models/video/video-channel'
 import { VideoShareModel } from '../../models/video/video-share'
 import { authenticate } from '../oauth'
 import { areValidationErrors } from './utils'
@@ -41,16 +42,44 @@ const videosAddValidator = [
     + CONSTRAINTS_FIELDS.VIDEOS.IMAGE.EXTNAME.join(', ')
   ),
   body('name').custom(isVideoNameValid).withMessage('Should have a valid name'),
-  body('category').optional().custom(isVideoCategoryValid).withMessage('Should have a valid category'),
-  body('licence').optional().custom(isVideoLicenceValid).withMessage('Should have a valid licence'),
-  body('language').optional().custom(isVideoLanguageValid).withMessage('Should have a valid language'),
-  body('nsfw').custom(isBooleanValid).withMessage('Should have a valid NSFW attribute'),
-  body('description').optional().custom(isVideoDescriptionValid).withMessage('Should have a valid description'),
-  body('support').optional().custom(isVideoSupportValid).withMessage('Should have a valid support text'),
-  body('channelId').custom(isIdValid).withMessage('Should have correct video channel id'),
-  body('privacy').custom(isVideoPrivacyValid).withMessage('Should have correct video privacy'),
-  body('tags').optional().custom(isVideoTagsValid).withMessage('Should have correct tags'),
-  body('commentsEnabled').custom(isBooleanValid).withMessage('Should have comments enabled boolean'),
+  body('category')
+    .optional()
+    .customSanitizer(toIntOrNull)
+    .custom(isVideoCategoryValid).withMessage('Should have a valid category'),
+  body('licence')
+    .optional()
+    .customSanitizer(toIntOrNull)
+    .custom(isVideoLicenceValid).withMessage('Should have a valid licence'),
+  body('language')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoLanguageValid).withMessage('Should have a valid language'),
+  body('nsfw')
+    .toBoolean()
+    .custom(isBooleanValid).withMessage('Should have a valid NSFW attribute'),
+  body('description')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoDescriptionValid).withMessage('Should have a valid description'),
+  body('support')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoSupportValid).withMessage('Should have a valid support text'),
+  body('tags')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoTagsValid).withMessage('Should have correct tags'),
+  body('commentsEnabled')
+    .toBoolean()
+    .custom(isBooleanValid).withMessage('Should have comments enabled boolean'),
+  body('privacy')
+    .optional()
+    .toInt()
+    .custom(isVideoPrivacyValid).withMessage('Should have correct video privacy'),
+  body('channelId')
+    .toInt()
+    .custom(isIdValid)
+    .withMessage('Should have correct video channel id'),
 
   async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     logger.debug('Checking videosAdd parameters', { parameters: req.body, files: req.files })
@@ -61,16 +90,7 @@ const videosAddValidator = [
     const videoFile: Express.Multer.File = req.files['videofile'][0]
     const user = res.locals.oauth.token.User
 
-    const videoChannel = await VideoChannelModel.loadByIdAndAccount(req.body.channelId, user.Account.id)
-    if (!videoChannel) {
-      res.status(400)
-        .json({ error: 'Unknown video video channel for this account.' })
-        .end()
-
-      return
-    }
-
-    res.locals.videoChannel = videoChannel
+    if (!await isVideoChannelOfAccountExist(req.body.channelId, user, res)) return
 
     const isAble = await user.isAbleToUploadVideo(videoFile)
     if (isAble === false) {
@@ -110,16 +130,49 @@ const videosUpdateValidator = [
     'This preview file is not supported. Please, make sure it is of the following type : '
     + CONSTRAINTS_FIELDS.VIDEOS.IMAGE.EXTNAME.join(', ')
   ),
-  body('name').optional().custom(isVideoNameValid).withMessage('Should have a valid name'),
-  body('category').optional().custom(isVideoCategoryValid).withMessage('Should have a valid category'),
-  body('licence').optional().custom(isVideoLicenceValid).withMessage('Should have a valid licence'),
-  body('language').optional().custom(isVideoLanguageValid).withMessage('Should have a valid language'),
-  body('nsfw').optional().custom(isBooleanValid).withMessage('Should have a valid NSFW attribute'),
-  body('privacy').optional().custom(isVideoPrivacyValid).withMessage('Should have correct video privacy'),
-  body('description').optional().custom(isVideoDescriptionValid).withMessage('Should have a valid description'),
-  body('support').optional().custom(isVideoSupportValid).withMessage('Should have a valid support text'),
-  body('tags').optional().custom(isVideoTagsValid).withMessage('Should have correct tags'),
-  body('commentsEnabled').optional().custom(isBooleanValid).withMessage('Should have comments enabled boolean'),
+  body('name')
+    .optional()
+    .custom(isVideoNameValid).withMessage('Should have a valid name'),
+  body('category')
+    .optional()
+    .customSanitizer(toIntOrNull)
+    .custom(isVideoCategoryValid).withMessage('Should have a valid category'),
+  body('licence')
+    .optional()
+    .customSanitizer(toIntOrNull)
+    .custom(isVideoLicenceValid).withMessage('Should have a valid licence'),
+  body('language')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoLanguageValid).withMessage('Should have a valid language'),
+  body('nsfw')
+    .optional()
+    .toBoolean()
+    .custom(isBooleanValid).withMessage('Should have a valid NSFW attribute'),
+  body('privacy')
+    .optional()
+    .toInt()
+    .custom(isVideoPrivacyValid).withMessage('Should have correct video privacy'),
+  body('description')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoDescriptionValid).withMessage('Should have a valid description'),
+  body('support')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoSupportValid).withMessage('Should have a valid support text'),
+  body('tags')
+    .optional()
+    .customSanitizer(toValueOrNull)
+    .custom(isVideoTagsValid).withMessage('Should have correct tags'),
+  body('commentsEnabled')
+    .optional()
+    .toBoolean()
+    .custom(isBooleanValid).withMessage('Should have comments enabled boolean'),
+  body('channelId')
+    .optional()
+    .toInt()
+    .custom(isIdValid).withMessage('Should have correct video channel id'),
 
   async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     logger.debug('Checking videosUpdate parameters', { parameters: req.body })
@@ -131,13 +184,16 @@ const videosUpdateValidator = [
     const video = res.locals.video
 
     // Check if the user who did the request is able to update the video
-    if (!checkUserCanManageVideo(res.locals.oauth.token.User, res.locals.video, UserRight.UPDATE_ANY_VIDEO, res)) return
+    const user = res.locals.oauth.token.User
+    if (!checkUserCanManageVideo(user, res.locals.video, UserRight.UPDATE_ANY_VIDEO, res)) return
 
     if (video.privacy !== VideoPrivacy.PRIVATE && req.body.privacy === VideoPrivacy.PRIVATE) {
       return res.status(409)
         .json({ error: 'Cannot set "private" a video that was not private anymore.' })
         .end()
     }
+
+    if (req.body.channelId && !await isVideoChannelOfAccountExist(req.body.channelId, user, res)) return
 
     return next()
   }
@@ -276,7 +332,7 @@ function checkUserCanManageVideo (user: UserModel, video: VideoModel, right: Use
   // Retrieve the user who did the request
   if (video.isOwned() === false) {
     res.status(403)
-              .json({ error: 'Cannot remove video of another server, blacklist it' })
+              .json({ error: 'Cannot manage a video of another server.' })
               .end()
     return false
   }
@@ -287,7 +343,7 @@ function checkUserCanManageVideo (user: UserModel, video: VideoModel, right: Use
   const account = video.VideoChannel.Account
   if (user.hasRight(right) === false && account.userId !== user.id) {
     res.status(403)
-              .json({ error: 'Cannot remove video of another user' })
+              .json({ error: 'Cannot manage a video of another user.' })
               .end()
     return false
   }

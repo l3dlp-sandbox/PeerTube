@@ -10,6 +10,7 @@ import {
   makeGetRequest, makeUploadRequest, makePutBodyRequest, removeVideo, runServer, ServerInfo, setAccessTokensToServers, userLogin
 } from '../../utils'
 import { checkBadCountPagination, checkBadSortPagination, checkBadStartPagination } from '../../utils/requests/check-api-params'
+import { getAccountsList } from '../../utils/users/accounts'
 
 const expect = chai.expect
 
@@ -17,7 +18,9 @@ describe('Test videos API validator', function () {
   const path = '/api/v1/videos/'
   let server: ServerInfo
   let userAccessToken = ''
+  let accountUUID: string
   let channelId: number
+  let channelUUID: string
   let videoId
 
   // ---------------------------------------------------------------
@@ -36,8 +39,12 @@ describe('Test videos API validator', function () {
     await createUser(server.url, server.accessToken, username, password)
     userAccessToken = await userLogin(server, { username, password })
 
-    const res = await getMyUserInformation(server.url, server.accessToken)
-    channelId = res.body.videoChannels[0].id
+    {
+      const res = await getMyUserInformation(server.url, server.accessToken)
+      channelId = res.body.videoChannels[ 0 ].id
+      channelUUID = res.body.videoChannels[ 0 ].uuid
+      accountUUID = res.body.account.uuid
+    }
   })
 
   describe('When listing a video', function () {
@@ -51,6 +58,10 @@ describe('Test videos API validator', function () {
 
     it('Should fail with an incorrect sort', async function () {
       await checkBadSortPagination(server.url, path)
+    })
+
+    it('Should success with the correct parameters', async function () {
+      await makeGetRequest({ url: server.url, path, statusCodeExpected: 200 })
     })
   })
 
@@ -75,6 +86,10 @@ describe('Test videos API validator', function () {
     it('Should fail with an incorrect sort', async function () {
       await checkBadSortPagination(server.url, join(path, 'search', 'test'))
     })
+
+    it('Should success with the correct parameters', async function () {
+      await makeGetRequest({ url: server.url, path, statusCodeExpected: 200 })
+    })
   })
 
   describe('When listing my videos', function () {
@@ -91,6 +106,58 @@ describe('Test videos API validator', function () {
     it('Should fail with an incorrect sort', async function () {
       await checkBadSortPagination(server.url, path, server.accessToken)
     })
+
+    it('Should success with the correct parameters', async function () {
+      await makeGetRequest({ url: server.url, token: server.accessToken, path, statusCodeExpected: 200 })
+    })
+  })
+
+  describe('When listing account videos', function () {
+    let path: string
+
+    before(async function () {
+      path = '/api/v1/accounts/' + accountUUID + '/videos'
+    })
+
+    it('Should fail with a bad start pagination', async function () {
+      await checkBadStartPagination(server.url, path, server.accessToken)
+    })
+
+    it('Should fail with a bad count pagination', async function () {
+      await checkBadCountPagination(server.url, path, server.accessToken)
+    })
+
+    it('Should fail with an incorrect sort', async function () {
+      await checkBadSortPagination(server.url, path, server.accessToken)
+    })
+
+    it('Should success with the correct parameters', async function () {
+      await makeGetRequest({ url: server.url, path, statusCodeExpected: 200 })
+    })
+  })
+
+  describe('When listing video channel videos', function () {
+    let path: string
+
+    before(async function () {
+      path = '/api/v1/video-channels/' + channelUUID + '/videos'
+    })
+
+    it('Should fail with a bad start pagination', async function () {
+      await checkBadStartPagination(server.url, path, server.accessToken)
+    })
+
+    it('Should fail with a bad count pagination', async function () {
+      await checkBadCountPagination(server.url, path, server.accessToken)
+    })
+
+    it('Should fail with an incorrect sort', async function () {
+      await checkBadSortPagination(server.url, path, server.accessToken)
+    })
+
+    it('Should success with the correct parameters', async function () {
+      await makeGetRequest({ url: server.url, path, statusCodeExpected: 200 })
+    })
   })
 
   describe('When adding a video', function () {
@@ -105,14 +172,14 @@ describe('Test videos API validator', function () {
         name: 'my super name',
         category: 5,
         licence: 1,
-        language: 6,
+        language: 'pt',
         nsfw: false,
         commentsEnabled: true,
         description: 'my super description',
         support: 'my super support text',
         tags: [ 'tag1', 'tag2' ],
         privacy: VideoPrivacy.PUBLIC,
-        channelId
+        channelId: channelId
       }
     })
 
@@ -151,7 +218,7 @@ describe('Test videos API validator', function () {
     })
 
     it('Should fail with a bad language', async function () {
-      const fields = immutableAssign(baseCorrectParams, { language: 125 })
+      const fields = immutableAssign(baseCorrectParams, { language: 'a'.repeat(15) })
       const attaches = baseCorrectAttaches
 
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
@@ -164,22 +231,8 @@ describe('Test videos API validator', function () {
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
     })
 
-    it('Should fail with a bad nsfw attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { nsfw: 2 })
-      const attaches = baseCorrectAttaches
-
-      await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
-    })
-
     it('Should fail without commentsEnabled attribute', async function () {
       const fields = omit(baseCorrectParams, 'commentsEnabled')
-      const attaches = baseCorrectAttaches
-
-      await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
-    })
-
-    it('Should fail with a bad commentsEnabled attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { commentsEnabled: 2 })
       const attaches = baseCorrectAttaches
 
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
@@ -193,7 +246,7 @@ describe('Test videos API validator', function () {
     })
 
     it('Should fail with a long support text', async function () {
-      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(70) })
+      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(150) })
       const attaches = baseCorrectAttaches
 
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
@@ -227,7 +280,7 @@ describe('Test videos API validator', function () {
       const fields = immutableAssign(baseCorrectParams, { channelId: customChannelId })
       const attaches = baseCorrectAttaches
 
-      await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
+      await makeUploadRequest({ url: server.url, path: path + '/upload', token: userAccessToken, fields, attaches })
     })
 
     it('Should fail with too many tags', async function () {
@@ -359,7 +412,7 @@ describe('Test videos API validator', function () {
       name: 'my super name',
       category: 5,
       licence: 2,
-      language: 6,
+      language: 'pt',
       nsfw: false,
       commentsEnabled: false,
       description: 'my super description',
@@ -413,19 +466,7 @@ describe('Test videos API validator', function () {
     })
 
     it('Should fail with a bad language', async function () {
-      const fields = immutableAssign(baseCorrectParams, { language: 125 })
-
-      await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
-    })
-
-    it('Should fail with a bad nsfw attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { nsfw: 2 })
-
-      await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
-    })
-
-    it('Should fail with a bad commentsEnabled attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { commentsEnabled: 2 })
+      const fields = immutableAssign(baseCorrectParams, { language: 'a'.repeat(15) })
 
       await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
     })
@@ -437,7 +478,13 @@ describe('Test videos API validator', function () {
     })
 
     it('Should fail with a long support text', async function () {
-      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(70) })
+      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(150) })
+
+      await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
+    })
+
+    it('Should fail with a bad channel', async function () {
+      const fields = immutableAssign(baseCorrectParams, { channelId: 545454 })
 
       await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
     })

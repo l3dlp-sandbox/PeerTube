@@ -6,13 +6,14 @@ import { FollowState } from '../../shared/models/actors'
 import { VideoPrivacy } from '../../shared/models/videos'
 // Do not use barrels, remain constants as independent as possible
 import { buildPath, isTestInstance, root, sanitizeHost, sanitizeUrl } from '../helpers/core-utils'
+import { NSFWPolicyType } from '../../shared/models/videos/nsfw-policy.type'
 
 // Use a variable to reload the configuration if we need
 let config: IConfig = require('config')
 
 // ---------------------------------------------------------------------------
 
-const LAST_MIGRATION_VERSION = 195
+const LAST_MIGRATION_VERSION = 215
 
 // ---------------------------------------------------------------------------
 
@@ -29,7 +30,7 @@ const SORTABLE_COLUMNS = {
   JOBS: [ 'createdAt' ],
   VIDEO_ABUSES: [ 'id', 'createdAt' ],
   VIDEO_CHANNELS: [ 'id', 'name', 'updatedAt', 'createdAt' ],
-  VIDEOS: [ 'name', 'duration', 'createdAt', 'views', 'likes' ],
+  VIDEOS: [ 'name', 'duration', 'createdAt', 'publishedAt', 'views', 'likes' ],
   VIDEO_COMMENT_THREADS: [ 'createdAt' ],
   BLACKLISTS: [ 'id', 'name', 'duration', 'views', 'likes', 'dislikes', 'uuid', 'createdAt' ],
   FOLLOWERS: [ 'createdAt' ],
@@ -39,6 +40,13 @@ const SORTABLE_COLUMNS = {
 const OAUTH_LIFETIME = {
   ACCESS_TOKEN: 3600 * 4, // 4 hours
   REFRESH_TOKEN: 1209600 // 2 weeks
+}
+
+const ROUTE_CACHE_LIFETIME = {
+  FEEDS: 1000 * 60 * 15, // 15 minutes
+  ACTIVITY_PUB: {
+    VIDEOS: 1000 // 1 second, cache concurrent requests after a broadcast for example
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +73,7 @@ const JOB_ATTEMPTS: { [ id in JobType ]: number } = {
   'activitypub-http-broadcast': 5,
   'activitypub-http-unicast': 5,
   'activitypub-http-fetcher': 5,
+  'activitypub-follow': 5,
   'video-file': 1,
   'email': 5
 }
@@ -72,11 +81,14 @@ const JOB_CONCURRENCY: { [ id in JobType ]: number } = {
   'activitypub-http-broadcast': 1,
   'activitypub-http-unicast': 5,
   'activitypub-http-fetcher': 1,
+  'activitypub-follow': 3,
   'video-file': 1,
   'email': 5
 }
-// 2 days
-const JOB_COMPLETED_LIFETIME = 60000 * 60 * 24 * 2
+const BROADCAST_CONCURRENCY = 10 // How many requests in parallel we do in activitypub-http-broadcast job
+const JOB_REQUEST_TIMEOUT = 3000 // 3 seconds
+const JOB_REQUEST_TTL = 60000 * 10 // 10 minutes
+const JOB_COMPLETED_LIFETIME = 60000 * 60 * 24 * 2 // 2 days
 
 // 1 hour
 let SCHEDULER_INTERVAL = 60000 * 60
@@ -86,7 +98,8 @@ let SCHEDULER_INTERVAL = 60000 * 60
 const CONFIG = {
   CUSTOM_FILE: getLocalConfigFilePath(),
   LISTEN: {
-    PORT: config.get<number>('listen.port')
+    PORT: config.get<number>('listen.port'),
+    HOSTNAME: config.get<string>('listen.hostname')
   },
   DATABASE: {
     DBNAME: 'peertube' + config.get<string>('database.suffix'),
@@ -98,7 +111,8 @@ const CONFIG = {
   REDIS: {
     HOSTNAME: config.get<string>('redis.hostname'),
     PORT: config.get<number>('redis.port'),
-    AUTH: config.get<string>('redis.auth')
+    AUTH: config.get<string>('redis.auth'),
+    DB: config.get<number>('redis.db')
   },
   SMTP: {
     HOSTNAME: config.get<string>('smtp.hostname'),
@@ -136,7 +150,13 @@ const CONFIG = {
   },
   SIGNUP: {
     get ENABLED () { return config.get<boolean>('signup.enabled') },
-    get LIMIT () { return config.get<number>('signup.limit') }
+    get LIMIT () { return config.get<number>('signup.limit') },
+    FILTERS: {
+      CIDR: {
+        get WHITELIST () { return config.get<string[]>('signup.filters.cidr.whitelist') },
+        get BLACKLIST () { return config.get<string[]>('signup.filters.cidr.blacklist') }
+      }
+    }
   },
   USER: {
     get VIDEO_QUOTA () { return config.get<number>('user.video_quota') }
@@ -163,9 +183,17 @@ const CONFIG = {
     get DESCRIPTION () { return config.get<string>('instance.description') },
     get TERMS () { return config.get<string>('instance.terms') },
     get DEFAULT_CLIENT_ROUTE () { return config.get<string>('instance.default_client_route') },
+    get DEFAULT_NSFW_POLICY () { return config.get<NSFWPolicyType>('instance.default_nsfw_policy') },
     CUSTOMIZATIONS: {
       get JAVASCRIPT () { return config.get<string>('instance.customizations.javascript') },
       get CSS () { return config.get<string>('instance.customizations.css') }
+    },
+    get ROBOTS () { return config.get<string>('instance.robots') }
+  },
+  SERVICES: {
+    TWITTER: {
+      get USERNAME () { return config.get<string>('services.twitter.username') },
+      get WHITELISTED () { return config.get<boolean>('services.twitter.whitelisted') }
     }
   }
 }
@@ -174,9 +202,10 @@ const CONFIG = {
 
 const CONSTRAINTS_FIELDS = {
   USERS: {
+    NAME: { min: 3, max: 120 }, // Length
+    DESCRIPTION: { min: 3, max: 250 }, // Length
     USERNAME: { min: 3, max: 20 }, // Length
     PASSWORD: { min: 6, max: 255 }, // Length
-    DESCRIPTION: { min: 3, max: 250 }, // Length
     VIDEO_QUOTA: { min: -1 }
   },
   VIDEO_ABUSES: {
@@ -184,15 +213,16 @@ const CONSTRAINTS_FIELDS = {
   },
   VIDEO_CHANNELS: {
     NAME: { min: 3, max: 120 }, // Length
-    DESCRIPTION: { min: 3, max: 250 }, // Length
-    SUPPORT: { min: 3, max: 300 }, // Length
+    DESCRIPTION: { min: 3, max: 500 }, // Length
+    SUPPORT: { min: 3, max: 500 }, // Length
     URL: { min: 3, max: 2000 } // Length
   },
   VIDEOS: {
     NAME: { min: 3, max: 120 }, // Length
+    LANGUAGE: { min: 1, max: 10 }, // Length
     TRUNCATED_DESCRIPTION: { min: 3, max: 250 }, // Length
     DESCRIPTION: { min: 3, max: 10000 }, // Length
-    SUPPORT: { min: 3, max: 300 }, // Length
+    SUPPORT: { min: 3, max: 500 }, // Length
     IMAGE: {
       EXTNAME: [ '.jpg', '.jpeg' ],
       FILE_SIZE: {
@@ -285,38 +315,7 @@ const VIDEO_LICENCES = {
   7: 'Public Domain Dedication'
 }
 
-// See https://en.wikipedia.org/wiki/List_of_languages_by_number_of_native_speakers#Nationalencyklopedin
-const VIDEO_LANGUAGES = {
-  1: 'English',
-  2: 'Spanish',
-  3: 'Mandarin',
-  4: 'Hindi',
-  5: 'Arabic',
-  6: 'Portuguese',
-  7: 'Bengali',
-  8: 'Russian',
-  9: 'Japanese',
-  10: 'Punjabi',
-  11: 'German',
-  12: 'Korean',
-  13: 'French',
-  14: 'Italian',
-  1000: 'Sign Language',
-  1001: 'American Sign Language',
-  1002: 'Arab Sign Language',
-  1003: 'British Sign Language',
-  1004: 'Brazilian Sign Language',
-  1005: 'Chinese Sign Language',
-  1006: 'Czech Sign Language',
-  1007: 'Danish Sign Language',
-  1008: 'French Sign Language',
-  1009: 'German Sign Language',
-  1010: 'Indo-Pakistani Sign Language',
-  1011: 'Japanese Sign Language',
-  1012: 'South African Sign Language',
-  1013: 'Swedish Sign Language',
-  1014: 'Russian Sign Language'
-}
+const VIDEO_LANGUAGES = buildLanguages()
 
 const VIDEO_PRIVACIES = {
   [VideoPrivacy.PUBLIC]: 'Public',
@@ -374,6 +373,12 @@ const BCRYPT_SALT_SIZE = 10
 
 const USER_PASSWORD_RESET_LIFETIME = 60000 * 5 // 5 minutes
 
+const NSFW_POLICY_TYPES: { [ id: string]: NSFWPolicyType } = {
+  DO_NOT_LIST: 'do_not_list',
+  BLUR: 'blur',
+  DISPLAY: 'display'
+}
+
 // ---------------------------------------------------------------------------
 
 // Express static paths (router)
@@ -422,6 +427,12 @@ const OPENGRAPH_AND_OEMBED_COMMENT = '<!-- open graph and oembed tags -->'
 
 // ---------------------------------------------------------------------------
 
+const FEEDS = {
+  COUNT: 20
+}
+
+// ---------------------------------------------------------------------------
+
 // Special constants for a test instance
 if (isTestInstance() === true) {
   ACTOR_FOLLOW_SCORE.BASE = 20
@@ -453,6 +464,7 @@ export {
   LAST_MIGRATION_VERSION,
   OAUTH_LIFETIME,
   OPENGRAPH_AND_OEMBED_COMMENT,
+  BROADCAST_CONCURRENCY,
   PAGINATION_COUNT_DEFAULT,
   ACTOR_FOLLOW_SCORE,
   PREVIEWS_SIZE,
@@ -460,7 +472,10 @@ export {
   FOLLOW_STATES,
   SERVER_ACTOR_NAME,
   PRIVATE_RSA_KEY_SIZE,
+  ROUTE_CACHE_LIFETIME,
   SORTABLE_COLUMNS,
+  FEEDS,
+  NSFW_POLICY_TYPES,
   STATIC_MAX_AGE,
   STATIC_PATHS,
   ACTIVITY_PUB,
@@ -473,6 +488,8 @@ export {
   VIDEO_RATE_TYPES,
   VIDEO_MIMETYPE_EXT,
   VIDEO_TRANSCODING_FPS,
+  JOB_REQUEST_TIMEOUT,
+  JOB_REQUEST_TTL,
   USER_PASSWORD_RESET_LIFETIME,
   IMAGE_MIMETYPE_EXT,
   SCHEDULER_INTERVAL,
@@ -497,6 +514,40 @@ function getLocalConfigFilePath () {
 function updateWebserverConfig () {
   CONFIG.WEBSERVER.URL = sanitizeUrl(CONFIG.WEBSERVER.SCHEME + '://' + CONFIG.WEBSERVER.HOSTNAME + ':' + CONFIG.WEBSERVER.PORT)
   CONFIG.WEBSERVER.HOST = sanitizeHost(CONFIG.WEBSERVER.HOSTNAME + ':' + CONFIG.WEBSERVER.PORT, REMOTE_SCHEME.HTTP)
+}
+
+function buildLanguages () {
+  const iso639 = require('iso-639-3')
+
+  const languages: { [ id: string ]: string } = {}
+
+  const signLanguages = [
+    'sgn', // Sign languages (macro language)
+    'ase', // American
+    'sdl', // Arabian
+    'bfi', // British
+    'bzs', // Brazilian
+    'csl', // Chinese
+    'cse', // Czech
+    'dsl', // Danish
+    'fsl', // French
+    'gsg', // German
+    'pks', // Pakistan
+    'jsl', // Japanese
+    'sfs', // South African
+    'swl', // Swedish
+    'rsl' // Russian
+  ]
+
+  // Only add ISO639-1 languages and some sign languages (ISO639-3)
+  iso639
+    .filter(l => {
+      return (l.iso6391 !== null && l.type === 'living') ||
+        signLanguages.indexOf(l.iso6393) !== -1
+    })
+    .forEach(l => languages[l.iso6391 || l.iso6393] = l.name)
+
+  return languages
 }
 
 export function reloadConfig () {

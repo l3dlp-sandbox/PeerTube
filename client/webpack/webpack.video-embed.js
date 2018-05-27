@@ -99,7 +99,7 @@ module.exports = function () {
 
     plugins: [
       new ExtractTextPlugin({
-        filename: '[name].[contenthash].css'
+        filename: '[name].[hash].css'
       }),
 
       new PurifyCSSPlugin({
@@ -134,6 +134,11 @@ module.exports = function () {
         }
       })
     ],
+
+    performance: {
+      maxEntrypointSize: 700000, // 600kB
+      maxAssetSize: 700000
+    },
 
     node: {
       global: true,

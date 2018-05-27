@@ -22,7 +22,7 @@ production, you can use a `docker-compose` setup.
 
 ```bash
 $ git clone https://github.com/chocobozzz/PeerTube /tmp/peertube
-$ cd /tmp/peertube/support/docker/production
+$ cd /tmp/peertube
 ```
 
 Then tweak the `docker-compose.yml` file there according to your needs. Then
@@ -30,14 +30,14 @@ you can use the regular `up` command to set it up, with possible overrides of
 the environment variables:
 
 ```bash
-$ PEERTUBE_HOSTNAME=peertube.lvh.me \
+$ PEERTUBE_WEBSERVER_HOSTNAME=peertube.lvh.me \
   PEERTUBE_ADMIN_EMAIL=test@example.com \
   PEERTUBE_TRANSCODING_ENABLED=true \
   PEERTUBE_SIGNUP_ENABLED=true \
   PEERTUBE_SMTP_HOST=mail.lvh.me \
   PEERTUBE_SMTP_PORT=1025 \
   PEERTUBE_SMTP_FROM=noreply@peertube.lvh.me \
-    docker-compose up
+    docker-compose -f support/docker/production/docker-compose.yml --project-directory . up
 ```
 
 Other environment variables are used in
@@ -49,18 +49,6 @@ example Docker Compose file provides example labels for a Traefik load
 balancer, although any HTTP reverse proxy will work fine. See the example
 Nginx configuration `support/nginx/peertube` file to get an idea of
 recommendations and requirements to run PeerTube the most efficiently.
-
-When starting the containers for the first time, you will get permissions errors for the data volume, like this one:
-
-```
-Error: EACCES: permission denied, mkdir '/data/logs'
-```
-
-The peertube user inside the container has a UID and GID of 991 so you have to change the folder's owner, in the case you're using `./data`:
-
-```
-chown -R 991:991 data/
-```
 
 **Important**: note that you'll get the initial `root` user password from the
 program output, so check out your logs to find them.

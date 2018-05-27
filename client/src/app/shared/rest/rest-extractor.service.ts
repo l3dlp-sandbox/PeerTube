@@ -1,7 +1,6 @@
-import { HttpErrorResponse } from '@angular/common/http'
+import { of, throwError as observableThrowError } from 'rxjs'
 import { Injectable } from '@angular/core'
 import { dateToHuman } from '@app/shared/misc/utils'
-import { Observable } from 'rxjs/Observable'
 import { ResultList } from '../../../../../shared'
 
 @Injectable()
@@ -33,13 +32,15 @@ export class RestExtractor {
     return target
   }
 
-  handleError (err: HttpErrorResponse) {
+  handleError (err: any) {
     let errorMessage
 
     if (err.error instanceof Error) {
       // A client-side or network error occurred. Handle it accordingly.
       errorMessage = err.error.message
       console.error('An error occurred:', errorMessage)
+    } else if (typeof err.error === 'string') {
+      errorMessage = err.error
     } else if (err.status !== undefined) {
       // A server-side error occurred.
       if (err.error && err.error.errors) {
@@ -84,6 +85,6 @@ export class RestExtractor {
       errorObj.body = err.error
     }
 
-    return Observable.throw(errorObj)
+    return observableThrowError(errorObj)
   }
 }

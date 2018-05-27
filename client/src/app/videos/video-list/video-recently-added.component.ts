@@ -1,10 +1,11 @@
 import { Component, OnDestroy, OnInit } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
+import { Location } from '@angular/common'
 import { immutableAssign } from '@app/shared/misc/utils'
 import { NotificationsService } from 'angular2-notifications'
 import { AuthService } from '../../core/auth'
 import { AbstractVideoList } from '../../shared/video/abstract-video-list'
-import { SortField } from '../../shared/video/sort-field.type'
+import { VideoSortField } from '../../shared/video/sort-field.type'
 import { VideoService } from '../../shared/video/video.service'
 
 @Component({
@@ -15,10 +16,11 @@ import { VideoService } from '../../shared/video/video.service'
 export class VideoRecentlyAddedComponent extends AbstractVideoList implements OnInit, OnDestroy {
   titlePage = 'Recently added'
   currentRoute = '/videos/recently-added'
-  sort: SortField = '-createdAt'
+  sort: VideoSortField = '-publishedAt'
 
   constructor (protected router: Router,
                protected route: ActivatedRoute,
+               protected location: Location,
                protected notificationsService: NotificationsService,
                protected authService: AuthService,
                private videoService: VideoService) {
@@ -27,6 +29,8 @@ export class VideoRecentlyAddedComponent extends AbstractVideoList implements On
 
   ngOnInit () {
     super.ngOnInit()
+
+    this.generateSyndicationList()
   }
 
   ngOnDestroy () {
@@ -37,5 +41,9 @@ export class VideoRecentlyAddedComponent extends AbstractVideoList implements On
     const newPagination = immutableAssign(this.pagination, { currentPage: page })
 
     return this.videoService.getVideos(newPagination, this.sort)
+  }
+
+  generateSyndicationList () {
+    this.syndicationItems = this.videoService.getVideoFeedUrls(this.sort)
   }
 }

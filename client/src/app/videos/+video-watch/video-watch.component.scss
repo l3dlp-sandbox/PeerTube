@@ -1,12 +1,12 @@
 @import '_variables';
 @import '_mixins';
 
-#video-container {
+#video-element-wrapper {
   background-color: #000;
   display: flex;
   justify-content: center;
 
-  #video-element {
+  /deep/ .video-js {
     width: 888px;
     height: 500px;
 
@@ -66,18 +66,44 @@
       .video-info-channel {
         font-weight: $font-semibold;
         font-size: 15px;
+
+        a {
+          @include disable-default-a-behaviour;
+
+          color: #000;
+
+          &:hover {
+            opacity: 0.8;
+          }
+        }
+
+        my-help {
+          display: inline-block;
+        }
       }
 
-      .video-info-by {
+      .video-info-by a {
+        @include disable-default-a-behaviour;
+
         display: flex;
         align-items: center;
         font-size: 13px;
+        color: #000;
+
+        span:hover {
+          opacity: 0.8;
+        }
 
         img {
           @include avatar(18px);
 
           margin-left: 7px;
         }
+      }
+
+      my-video-feed {
+        margin-left: 5px;
+        margin-top: 1px;
       }
 
       .video-actions-rates {
@@ -205,8 +231,7 @@
       font-size: 15px;
 
       .video-info-description-html {
-        word-wrap: break-word;
-        text-align: justify;
+        @include peertube-word-wrap;
       }
 
       .description-loading {
@@ -241,6 +266,8 @@
   }
 
   .other-videos {
+    padding-left: 1em;
+
     .title-page {
       margin-top: 0;
     }
@@ -322,7 +349,7 @@
 
         .video-actions-rates {
           margin-top: 20px;
-          align-items: left;
+          align-items: start;
 
           .video-info-likes-dislikes-bar {
             margin-top: 10px;

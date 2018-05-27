@@ -1,5 +1,6 @@
-import { hasUserRight, User as UserServerModel, UserRight, UserRole, VideoChannel } from '../../../../../shared'
-import { Account } from '../account/account.model'
+import { Account, hasUserRight, User as UserServerModel, UserRight, UserRole, VideoChannel } from '../../../../../shared'
+import { NSFWPolicyType } from '../../../../../shared/models/videos/nsfw-policy.type'
+import { Actor } from '@app/shared/actor/actor.model'
 
 export type UserConstructorHash = {
   id: number,
@@ -7,7 +8,7 @@ export type UserConstructorHash = {
   email: string,
   role: UserRole,
   videoQuota?: number,
-  displayNSFW?: boolean,
+  nsfwPolicy?: NSFWPolicyType,
   autoPlayVideo?: boolean,
   createdAt?: Date,
   account?: Account,
@@ -18,12 +19,13 @@ export class User implements UserServerModel {
   username: string
   email: string
   role: UserRole
-  displayNSFW: boolean
+  nsfwPolicy: NSFWPolicyType
   autoPlayVideo: boolean
   videoQuota: number
   account: Account
   videoChannels: VideoChannel[]
   createdAt: Date
+  accountAvatarUrl: string
 
   constructor (hash: UserConstructorHash) {
     this.id = hash.id
@@ -40,8 +42,8 @@ export class User implements UserServerModel {
       this.videoQuota = hash.videoQuota
     }
 
-    if (hash.displayNSFW !== undefined) {
-      this.displayNSFW = hash.displayNSFW
+    if (hash.nsfwPolicy !== undefined) {
+      this.nsfwPolicy = hash.nsfwPolicy
     }
 
     if (hash.autoPlayVideo !== undefined) {
@@ -51,19 +53,23 @@ export class User implements UserServerModel {
     if (hash.createdAt !== undefined) {
       this.createdAt = hash.createdAt
     }
+
+    this.updateComputedAttributes()
   }
 
   hasRight (right: UserRight) {
     return hasUserRight(this.role, right)
   }
 
-  getAvatarUrl () {
-    return Account.GET_ACCOUNT_AVATAR_URL(this.account)
-  }
-
   patch (obj: UserServerModel) {
     for (const key of Object.keys(obj)) {
       this[key] = obj[key]
     }
+
+    this.updateComputedAttributes()
+  }
+
+  private updateComputedAttributes () {
+    this.accountAvatarUrl = Actor.GET_ACTOR_AVATAR_URL(this.account)
   }
 }

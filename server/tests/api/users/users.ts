@@ -168,10 +168,11 @@ describe('Test users', function () {
 
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('user_1@example.com')
-    expect(user.displayNSFW).to.be.false
+    expect(user.nsfwPolicy).to.equal('display')
     expect(user.videoQuota).to.equal(2 * 1024 * 1024)
     expect(user.roleLabel).to.equal('User')
     expect(user.id).to.be.a('number')
+    expect(user.account.displayName).to.equal('user_1')
     expect(user.account.description).to.be.null
   })
 
@@ -215,12 +216,12 @@ describe('Test users', function () {
     const user = users[ 0 ]
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('user_1@example.com')
-    expect(user.displayNSFW).to.be.false
+    expect(user.nsfwPolicy).to.equal('display')
 
     const rootUser = users[ 1 ]
     expect(rootUser.username).to.equal('root')
     expect(rootUser.email).to.equal('admin1@example.com')
-    expect(rootUser.displayNSFW).to.be.false
+    expect(user.nsfwPolicy).to.equal('display')
 
     userId = user.id
   })
@@ -239,7 +240,7 @@ describe('Test users', function () {
     expect(user.username).to.equal('root')
     expect(user.email).to.equal('admin1@example.com')
     expect(user.roleLabel).to.equal('Administrator')
-    expect(user.displayNSFW).to.be.false
+    expect(user.nsfwPolicy).to.equal('display')
   })
 
   it('Should list only the first user by username desc', async function () {
@@ -254,7 +255,7 @@ describe('Test users', function () {
     const user = users[ 0 ]
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('user_1@example.com')
-    expect(user.displayNSFW).to.be.false
+    expect(user.nsfwPolicy).to.equal('display')
   })
 
   it('Should list only the second user by createdAt desc', async function () {
@@ -269,7 +270,7 @@ describe('Test users', function () {
     const user = users[ 0 ]
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('user_1@example.com')
-    expect(user.displayNSFW).to.be.false
+    expect(user.nsfwPolicy).to.equal('display')
   })
 
   it('Should list all the users by createdAt asc', async function () {
@@ -283,11 +284,11 @@ describe('Test users', function () {
 
     expect(users[ 0 ].username).to.equal('root')
     expect(users[ 0 ].email).to.equal('admin1@example.com')
-    expect(users[ 0 ].displayNSFW).to.be.false
+    expect(users[ 0 ].nsfwPolicy).to.equal('display')
 
     expect(users[ 1 ].username).to.equal('user_1')
     expect(users[ 1 ].email).to.equal('user_1@example.com')
-    expect(users[ 1 ].displayNSFW).to.be.false
+    expect(users[ 1 ].nsfwPolicy).to.equal('display')
   })
 
   it('Should update my password', async function () {
@@ -305,7 +306,7 @@ describe('Test users', function () {
     await updateMyUser({
       url: server.url,
       accessToken: accessTokenUser,
-      displayNSFW: true
+      nsfwPolicy: 'do_not_list'
     })
 
     const res = await getMyUserInformation(server.url, accessTokenUser)
@@ -313,9 +314,10 @@ describe('Test users', function () {
 
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('user_1@example.com')
-    expect(user.displayNSFW).to.be.ok
+    expect(user.nsfwPolicy).to.equal('do_not_list')
     expect(user.videoQuota).to.equal(2 * 1024 * 1024)
     expect(user.id).to.be.a('number')
+    expect(user.account.displayName).to.equal('user_1')
     expect(user.account.description).to.be.null
   })
 
@@ -344,9 +346,10 @@ describe('Test users', function () {
 
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('updated@example.com')
-    expect(user.displayNSFW).to.be.ok
+    expect(user.nsfwPolicy).to.equal('do_not_list')
     expect(user.videoQuota).to.equal(2 * 1024 * 1024)
     expect(user.id).to.be.a('number')
+    expect(user.account.displayName).to.equal('user_1')
     expect(user.account.description).to.be.null
   })
 
@@ -365,6 +368,25 @@ describe('Test users', function () {
     await testImage(server.url, 'avatar-resized', user.account.avatar.path, '.png')
   })
 
+  it('Should be able to update my display name', async function () {
+    await updateMyUser({
+      url: server.url,
+      accessToken: accessTokenUser,
+      displayName: 'new display name'
+    })
+
+    const res = await getMyUserInformation(server.url, accessTokenUser)
+    const user = res.body
+
+    expect(user.username).to.equal('user_1')
+    expect(user.email).to.equal('updated@example.com')
+    expect(user.nsfwPolicy).to.equal('do_not_list')
+    expect(user.videoQuota).to.equal(2 * 1024 * 1024)
+    expect(user.id).to.be.a('number')
+    expect(user.account.displayName).to.equal('new display name')
+    expect(user.account.description).to.be.null
+  })
+
   it('Should be able to update my description', async function () {
     await updateMyUser({
       url: server.url,
@@ -377,9 +399,10 @@ describe('Test users', function () {
 
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('updated@example.com')
-    expect(user.displayNSFW).to.be.ok
+    expect(user.nsfwPolicy).to.equal('do_not_list')
     expect(user.videoQuota).to.equal(2 * 1024 * 1024)
     expect(user.id).to.be.a('number')
+    expect(user.account.displayName).to.equal('new display name')
     expect(user.account.description).to.equal('my super description updated')
   })
 
@@ -398,7 +421,7 @@ describe('Test users', function () {
 
     expect(user.username).to.equal('user_1')
     expect(user.email).to.equal('updated2@example.com')
-    expect(user.displayNSFW).to.be.ok
+    expect(user.nsfwPolicy).to.equal('do_not_list')
     expect(user.videoQuota).to.equal(42)
     expect(user.roleLabel).to.equal('Moderator')
     expect(user.id).to.be.a('number')

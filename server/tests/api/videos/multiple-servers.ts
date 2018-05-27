@@ -39,6 +39,7 @@ import {
   getVideoCommentThreads,
   getVideoThreadComments
 } from '../../utils/videos/video-comments'
+import { getAccountsList } from '../../utils/users/accounts'
 
 const expect = chai.expect
 
@@ -56,13 +57,15 @@ describe('Test multiple servers', function () {
     // Get the access tokens
     await setAccessTokensToServers(servers)
 
-    const videoChannel = {
-      name: 'my channel',
-      description: 'super channel'
+    {
+      const videoChannel = {
+        displayName: 'my channel',
+        description: 'super channel'
+      }
+      await addVideoChannel(servers[ 0 ].url, servers[ 0 ].accessToken, videoChannel)
+      const channelRes = await getVideoChannelsList(servers[ 0 ].url, 0, 1)
+      videoChannelId = channelRes.body.data[ 0 ].id
     }
-    await addVideoChannel(servers[0].url, servers[0].accessToken, videoChannel)
-    const channelRes = await getVideoChannelsList(servers[0].url, 0, 1)
-    videoChannelId = channelRes.body.data[0].id
 
     // Server 1 and server 2 follow each other
     await doubleFollow(servers[0], servers[1])
@@ -89,7 +92,7 @@ describe('Test multiple servers', function () {
         name: 'my super name for server 1',
         category: 5,
         licence: 4,
-        language: 9,
+        language: 'ja',
         nsfw: true,
         description: 'my super description for server 1',
         support: 'my super support text for server 1',
@@ -108,7 +111,7 @@ describe('Test multiple servers', function () {
           name: 'my super name for server 1',
           category: 5,
           licence: 4,
-          language: 9,
+          language: 'ja',
           nsfw: true,
           description: 'my super description for server 1',
           support: 'my super support text for server 1',
@@ -159,7 +162,7 @@ describe('Test multiple servers', function () {
         name: 'my super name for server 2',
         category: 4,
         licence: 3,
-        language: 11,
+        language: 'de',
         nsfw: true,
         description: 'my super description for server 2',
         support: 'my super support text for server 2',
@@ -180,7 +183,7 @@ describe('Test multiple servers', function () {
           name: 'my super name for server 2',
           category: 4,
           licence: 3,
-          language: 11,
+          language: 'de',
           nsfw: true,
           description: 'my super description for server 2',
           support: 'my super support text for server 2',
@@ -238,7 +241,7 @@ describe('Test multiple servers', function () {
         name: 'my super name for server 3',
         category: 6,
         licence: 5,
-        language: 11,
+        language: 'de',
         nsfw: true,
         description: 'my super description for server 3',
         support: 'my super support text for server 3',
@@ -251,7 +254,7 @@ describe('Test multiple servers', function () {
         name: 'my super name for server 3-2',
         category: 7,
         licence: 6,
-        language: 12,
+        language: 'ko',
         nsfw: false,
         description: 'my super description for server 3-2',
         support: 'my super support text for server 3-2',
@@ -286,7 +289,7 @@ describe('Test multiple servers', function () {
           name: 'my super name for server 3',
           category: 6,
           licence: 5,
-          language: 11,
+          language: 'de',
           nsfw: true,
           description: 'my super description for server 3',
           support: 'my super support text for server 3',
@@ -318,7 +321,7 @@ describe('Test multiple servers', function () {
           name: 'my super name for server 3-2',
           category: 7,
           licence: 6,
-          language: 12,
+          language: 'ko',
           nsfw: false,
           description: 'my super description for server 3-2',
           support: 'my super support text for server 3-2',
@@ -597,7 +600,7 @@ describe('Test multiple servers', function () {
         name: 'my super video updated',
         category: 10,
         licence: 7,
-        language: 13,
+        language: 'fr',
         nsfw: true,
         description: 'my super description updated',
         support: 'my super support text updated',
@@ -626,7 +629,7 @@ describe('Test multiple servers', function () {
           name: 'my super video updated',
           category: 10,
           licence: 7,
-          language: 13,
+          language: 'fr',
           nsfw: true,
           description: 'my super description updated',
           support: 'my super support text updated',

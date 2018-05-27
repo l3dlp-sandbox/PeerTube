@@ -58,14 +58,26 @@ import { initDatabaseModels } from './server/initializers/database'
 import { migrate } from './server/initializers/migrator'
 migrate()
   .then(() => initDatabaseModels(false))
-  .then(() => onDatabaseInitDone())
+  .then(() => startApplication())
+  .catch(err => {
+    logger.error('Cannot start application.', { err })
+    process.exit(-1)
+  })
 
 // ----------- PeerTube modules -----------
 import { installApplication } from './server/initializers'
 import { Emailer } from './server/lib/emailer'
 import { JobQueue } from './server/lib/job-queue'
 import { VideosPreviewCache } from './server/lib/cache'
-import { apiRouter, clientsRouter, staticRouter, servicesRouter, webfingerRouter, activityPubRouter } from './server/controllers'
+import {
+  activityPubRouter,
+  apiRouter,
+  clientsRouter,
+  feedsRouter,
+  staticRouter,
+  servicesRouter,
+  webfingerRouter
+} from './server/controllers'
 import { Redis } from './server/lib/redis'
 import { BadActorFollowScheduler } from './server/lib/schedulers/bad-actor-follow-scheduler'
 import { RemoveOldJobsScheduler } from './server/lib/schedulers/remove-old-jobs-scheduler'
@@ -83,7 +95,7 @@ if (isTestInstance()) {
       req.path.indexOf(STATIC_PATHS.WEBSEED) === -1
     ) {
       return (cors({
-        origin: 'http://localhost:3000',
+        origin: '*',
         exposedHeaders: 'Retry-After',
         credentials: true
       }))(req, res, next)
@@ -140,8 +152,9 @@ app.use(apiRoute, apiRouter)
 // Services (oembed...)
 app.use('/services', servicesRouter)
 
-app.use('/', webfingerRouter)
 app.use('/', activityPubRouter)
+app.use('/', feedsRouter)
+app.use('/', webfingerRouter)
 
 // Client files
 app.use('/', clientsRouter)
@@ -179,30 +192,31 @@ app.use(function (err, req, res, next) {
 
 // ----------- Run -----------
 
-function onDatabaseInitDone () {
+async function startApplication () {
   const port = CONFIG.LISTEN.PORT
+  const hostname = CONFIG.LISTEN.HOSTNAME
 
-  installApplication()
-    .then(() => {
-      // ----------- Make the server listening -----------
-      server.listen(port, () => {
-        // Emailer initialization and then job queue initialization
-        Emailer.Instance.init()
-        Emailer.Instance.checkConnectionOrDie()
-          .then(() => JobQueue.Instance.init())
+  await installApplication()
 
-        // Caches initializations
-        VideosPreviewCache.Instance.init(CONFIG.CACHE.PREVIEWS.SIZE)
+  // Email initialization
+  Emailer.Instance.init()
+  await Emailer.Instance.checkConnectionOrDie()
 
-        // Enable Schedulers
-        BadActorFollowScheduler.Instance.enable()
-        RemoveOldJobsScheduler.Instance.enable()
+  await JobQueue.Instance.init()
 
-        // Redis initialization
-        Redis.Instance.init()
+  // Caches initializations
+  VideosPreviewCache.Instance.init(CONFIG.CACHE.PREVIEWS.SIZE)
 
-        logger.info('Server listening on port %d', port)
-        logger.info('Web server: %s', CONFIG.WEBSERVER.URL)
-      })
-    })
+  // Enable Schedulers
+  BadActorFollowScheduler.Instance.enable()
+  RemoveOldJobsScheduler.Instance.enable()
+
+  // Redis initialization
+  Redis.Instance.init()
+
+  // Make server listening
+  server.listen(port, hostname, () => {
+    logger.info('Server listening on %s:%d', hostname, port)
+    logger.info('Web server: %s', CONFIG.WEBSERVER.URL)
+  })
 }

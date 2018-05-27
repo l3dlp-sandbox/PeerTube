@@ -1,15 +1,14 @@
+import { debounceTime } from 'rxjs/operators'
 import { ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
+import { Location } from '@angular/common'
 import { isInMobileView } from '@app/shared/misc/utils'
 import { InfiniteScrollerDirective } from '@app/shared/video/infinite-scroller.directive'
 import { NotificationsService } from 'angular2-notifications'
-import 'rxjs/add/operator/debounceTime'
-import { Observable } from 'rxjs/Observable'
-import { fromEvent } from 'rxjs/observable/fromEvent'
-import { Subscription } from 'rxjs/Subscription'
+import { fromEvent, Observable, Subscription } from 'rxjs'
 import { AuthService } from '../../core/auth'
 import { ComponentPagination } from '../rest/component-pagination.model'
-import { SortField } from './sort-field.type'
+import { VideoSortField } from './sort-field.type'
 import { Video } from './video.model'
 
 export abstract class AbstractVideoList implements OnInit, OnDestroy {
@@ -23,9 +22,12 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
     itemsPerPage: 10,
     totalItems: null
   }
-  sort: SortField = '-createdAt'
-  defaultSort: SortField = '-createdAt'
+  sort: VideoSortField = '-publishedAt'
+  defaultSort: VideoSortField = '-publishedAt'
+  syndicationItems = []
+
   loadOnInit = true
+  marginContent = true
   pageHeight: number
   videoWidth: number
   videoHeight: number
@@ -38,15 +40,18 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
   protected abstract authService: AuthService
   protected abstract router: Router
   protected abstract route: ActivatedRoute
+  protected abstract location: Location
   protected abstract currentRoute: string
   abstract titlePage: string
 
   protected loadedPages: { [ id: number ]: Video[] } = {}
+  protected loadingPage: { [ id: number ]: boolean } = {}
   protected otherRouteParams = {}
 
   private resizeSubscription: Subscription
 
   abstract getVideosObservable (page: number): Observable<{ videos: Video[], totalVideos: number}>
+  abstract generateSyndicationList ()
 
   get user () {
     return this.authService.getUser()
@@ -58,7 +63,7 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
     this.loadRouteParams(routeParams)
 
     this.resizeSubscription = fromEvent(window, 'resize')
-      .debounceTime(500)
+      .pipe(debounceTime(500))
       .subscribe(() => this.calcPageSizes())
 
     this.calcPageSizes()
@@ -91,11 +96,15 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
 
   loadMoreVideos (page: number) {
     if (this.loadedPages[page] !== undefined) return
+    if (this.loadingPage[page] === true) return
 
+    this.loadingPage[page] = true
     const observable = this.getVideosObservable(page)
 
     observable.subscribe(
       ({ videos, totalVideos }) => {
+        this.loadingPage[page] = false
+
         // Paging is too high, return to the first one
         if (this.pagination.currentPage > 1 && totalVideos <= ((this.pagination.currentPage - 1) * this.pagination.itemsPerPage)) {
           this.pagination.currentPage = 1
@@ -113,7 +122,10 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
           setTimeout(() => this.infiniteScroller.initialize(), 500)
         }
       },
-      error => this.notificationsService.error('Error', error.message)
+      error => {
+        this.loadingPage[page] = false
+        this.notificationsService.error('Error', error.message)
+      }
     )
   }
 
@@ -151,7 +163,7 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
   }
 
   protected loadRouteParams (routeParams: { [ key: string ]: any }) {
-    this.sort = routeParams['sort'] as SortField || this.defaultSort
+    this.sort = routeParams['sort'] as VideoSortField || this.defaultSort
 
     if (routeParams['page'] !== undefined) {
       this.pagination.currentPage = parseInt(routeParams['page'], 10)
@@ -161,8 +173,10 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
   }
 
   protected setNewRouteParams () {
-    const routeParams = this.buildRouteParams()
-    this.router.navigate([ this.currentRoute ], { queryParams: routeParams })
+    const paramsObject = this.buildRouteParams()
+
+    const queryParams = Object.keys(paramsObject).map(p => p + '=' + paramsObject[p]).join('&')
+    this.location.replaceState(this.currentRoute, queryParams)
   }
 
   protected buildVideoPages () {

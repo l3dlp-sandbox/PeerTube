@@ -1,17 +1,21 @@
-import { Account } from '@app/shared/account/account.model'
 import { User } from '../'
-import { Video as VideoServerModel } from '../../../../../shared'
+import { Video as VideoServerModel, VideoPrivacy } from '../../../../../shared'
 import { Avatar } from '../../../../../shared/models/avatars/avatar.model'
 import { VideoConstant } from '../../../../../shared/models/videos/video.model'
 import { getAbsoluteAPIUrl } from '../misc/utils'
+import { ServerConfig } from '../../../../../shared/models'
+import { Actor } from '@app/shared/actor/actor.model'
 
 export class Video implements VideoServerModel {
   by: string
+  accountAvatarUrl: string
   createdAt: Date
   updatedAt: Date
+  publishedAt: Date
   category: VideoConstant<number>
   licence: VideoConstant<number>
-  language: VideoConstant<number>
+  language: VideoConstant<string>
+  privacy: VideoConstant<VideoPrivacy>
   description: string
   duration: number
   durationLabel: string
@@ -32,6 +36,18 @@ export class Video implements VideoServerModel {
   nsfw: boolean
 
   account: {
+    id: number
+    uuid: string
+    name: string
+    displayName: string
+    url: string
+    host: string
+    avatar: Avatar
+  }
+
+  channel: {
+    id: number
+    uuid: string
     name: string
     displayName: string
     url: string
@@ -56,9 +72,11 @@ export class Video implements VideoServerModel {
     const absoluteAPIUrl = getAbsoluteAPIUrl()
 
     this.createdAt = new Date(hash.createdAt.toString())
+    this.publishedAt = new Date(hash.publishedAt.toString())
     this.category = hash.category
     this.licence = hash.licence
     this.language = hash.language
+    this.privacy = hash.privacy
     this.description = hash.description
     this.duration = hash.duration
     this.durationLabel = Video.createDurationString(hash.duration)
@@ -78,11 +96,18 @@ export class Video implements VideoServerModel {
     this.nsfw = hash.nsfw
     this.account = hash.account
 
-    this.by = Account.CREATE_BY_STRING(hash.account.name, hash.account.host)
+    this.by = Actor.CREATE_BY_STRING(hash.account.name, hash.account.host)
+    this.accountAvatarUrl = Actor.GET_ACTOR_AVATAR_URL(this.account)
   }
 
-  isVideoNSFWForUser (user: User) {
-    // If the video is NSFW and the user is not logged in, or the user does not want to display NSFW videos...
-    return (this.nsfw && (!user || user.displayNSFW === false))
+  isVideoNSFWForUser (user: User, serverConfig: ServerConfig) {
+    // Video is not NSFW, skip
+    if (this.nsfw === false) return false
+
+    // Return user setting if logged in
+    if (user) return user.nsfwPolicy !== 'display'
+
+    // Return default instance config
+    return serverConfig.instance.defaultNSFWPolicy !== 'display'
   }
 }

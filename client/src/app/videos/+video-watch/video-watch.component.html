@@ -1,7 +1,6 @@
 <div class="row">
   <!-- We need the video container for videojs so we just hide it -->
-  <div [hidden]="videoNotFound" id="video-container">
-     <video [poster]="getVideoPoster()" id="video-element" class="video-js vjs-peertube-skin"></video>
+  <div [hidden]="videoNotFound" id="video-element-wrapper">
   </div>
 
   <div *ngIf="videoNotFound" id="video-not-found">Video not found :'(</div>
@@ -14,17 +13,22 @@
           <div class="video-info-name">{{ video.name }}</div>
 
           <div class="video-info-date-views">
-            {{ video.createdAt | myFromNow }} - {{ video.views | myNumberFormatter }} views
+            {{ video.publishedAt | myFromNow }} - {{ video.views | myNumberFormatter }} views
           </div>
 
           <div class="video-info-channel">
-            {{ video.channel.displayName }}
+            <a [routerLink]="[ '/video-channels', video.channel.id ]" title="Go the channel page">
+              {{ video.channel.displayName }}
+            </a>
             <!-- Here will be the subscribe button -->
+            <my-help helpType="custom" customHtml="You can subscribe to this account via any ActivityPub-capable fediverse instance. For instance with Mastodon or Pleroma you can type in the search box <strong>@{{video.account.displayName}}@{{video.account.host}}</strong> and subscribe there. Subscription as a PeerTube user is being worked on in <a href='https://github.com/Chocobozzz/PeerTube/issues/470'>#470</a>."></my-help>
           </div>
 
           <div class="video-info-by">
-            By {{ video.by }}
-            <img [src]="getAvatarPath()" alt="Account avatar" />
+            <a [routerLink]="[ '/accounts', video.account.id ]" title="Go the account page">
+              <span>By {{ video.by }}</span>
+              <img [src]="video.accountAvatarUrl" alt="Account avatar" />
+            </a>
           </div>
         </div>
 
@@ -79,7 +83,7 @@
                 </li>
 
                 <li *ngIf="isVideoUpdatable()" role="menuitem">
-                  <a class="dropdown-item" title="Update this video" href="#" [routerLink]="[ '/videos/edit', video.uuid ]">
+                  <a class="dropdown-item" title="Update this video" href="#" [routerLink]="[ '/videos/update', video.uuid ]">
                     <span class="icon icon-edit"></span> Update
                   </a>
                 </li>

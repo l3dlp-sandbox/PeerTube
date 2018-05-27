@@ -16,9 +16,12 @@
 /PeerTube.iml
 /profiling/
 /*.zip
+/*.tar.xz
+/*.asc
 /thumbnails/
 /torrents/
 /videos/
 /previews/
 /logs/
 /server/tools/import-mediacore.ts
+/docker-volume/
