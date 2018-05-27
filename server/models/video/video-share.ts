@@ -98,6 +98,15 @@ export class VideoShareModel extends Model<VideoShareModel> {
     })
   }
 
+  static loadByUrl (url: string, t: Sequelize.Transaction) {
+    return VideoShareModel.scope(ScopeNames.WITH_ACTOR).findOne({
+      where: {
+        url
+      },
+      transaction: t
+    })
+  }
+
   static loadActorsByShare (videoId: number, t: Sequelize.Transaction) {
     const query = {
       where: {
@@ -177,5 +186,18 @@ export class VideoShareModel extends Model<VideoShareModel> {
     return VideoShareModel.scope(ScopeNames.FULL)
       .findAll(query)
       .then(res => res.map(r => r.Actor))
+  }
+
+  static listAndCountByVideoId (videoId: number, start: number, count: number, t?: Sequelize.Transaction) {
+    const query = {
+      start,
+      count,
+      where: {
+        videoId
+      },
+      transaction: t
+    }
+
+    return VideoShareModel.findAndCountAll(query)
   }
 }

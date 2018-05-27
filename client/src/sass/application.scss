@@ -111,6 +111,10 @@ label {
   &:hover, &:active, &:focus {
     color: #000;
   }
+
+  @media screen and (max-width: 500px) {
+    margin-right: 20px;
+  }
 }
 
 .admin-sub-header {
@@ -223,6 +227,10 @@ p-table {
     width: 250px !important;
     padding: 0 !important;
     text-align: center;
+
+    my-edit-button + my-delete-button {
+      margin-left: 5px;
+    }
   }
 
   p-paginator {

@@ -1,6 +1,6 @@
 import { Actor as ActorServer } from '../../../../../shared/models/actors/actor.model'
-import { getAbsoluteAPIUrl } from '@app/shared/misc/utils'
 import { Avatar } from '../../../../../shared/models/avatars/avatar.model'
+import { getAbsoluteAPIUrl } from '@app/shared/misc/utils'
 
 export abstract class Actor implements ActorServer {
   id: number
@@ -10,8 +10,8 @@ export abstract class Actor implements ActorServer {
   host: string
   followingCount: number
   followersCount: number
-  createdAt: Date
-  updatedAt: Date
+  createdAt: Date | string
+  updatedAt: Date | string
   avatar: Avatar
 
   avatarUrl: string

@@ -1,5 +1,5 @@
 import { VideoCommentObject } from '../../../shared/models/activitypub/objects/video-comment-object'
-import { isVideoCommentObjectValid } from '../../helpers/custom-validators/activitypub/video-comments'
+import { sanitizeAndCheckVideoCommentObject } from '../../helpers/custom-validators/activitypub/video-comments'
 import { logger } from '../../helpers/logger'
 import { doRequest } from '../../helpers/requests'
 import { ACTIVITY_PUB } from '../../initializers'
@@ -37,7 +37,7 @@ async function videoCommentActivityObjectToDBAttributes (video: VideoModel, acto
   }
 }
 
-async function addVideoComments (instance: VideoModel, commentUrls: string[]) {
+async function addVideoComments (commentUrls: string[], instance: VideoModel) {
   for (const commentUrl of commentUrls) {
     await addVideoComment(instance, commentUrl)
   }
@@ -52,7 +52,7 @@ async function addVideoComment (videoInstance: VideoModel, commentUrl: string) {
     activityPub: true
   })
 
-  if (isVideoCommentObjectValid(body) === false) {
+  if (sanitizeAndCheckVideoCommentObject(body) === false) {
     logger.debug('Remote video comment JSON is not valid.', { body })
     return undefined
   }
@@ -123,7 +123,7 @@ async function resolveThread (url: string, comments: VideoCommentModel[] = []) {
       activityPub: true
     })
 
-    if (isVideoCommentObjectValid(body) === false) {
+    if (sanitizeAndCheckVideoCommentObject(body) === false) {
       throw new Error('Remote video comment JSON is not valid :' + JSON.stringify(body))
     }
 

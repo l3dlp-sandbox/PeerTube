@@ -13,7 +13,7 @@ let config: IConfig = require('config')
 
 // ---------------------------------------------------------------------------
 
-const LAST_MIGRATION_VERSION = 210
+const LAST_MIGRATION_VERSION = 215
 
 // ---------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ const SORTABLE_COLUMNS = {
   JOBS: [ 'createdAt' ],
   VIDEO_ABUSES: [ 'id', 'createdAt' ],
   VIDEO_CHANNELS: [ 'id', 'name', 'updatedAt', 'createdAt' ],
-  VIDEOS: [ 'name', 'duration', 'createdAt', 'views', 'likes' ],
+  VIDEOS: [ 'name', 'duration', 'createdAt', 'publishedAt', 'views', 'likes' ],
   VIDEO_COMMENT_THREADS: [ 'createdAt' ],
   BLACKLISTS: [ 'id', 'name', 'duration', 'views', 'likes', 'dislikes', 'uuid', 'createdAt' ],
   FOLLOWERS: [ 'createdAt' ],
@@ -40,6 +40,13 @@ const SORTABLE_COLUMNS = {
 const OAUTH_LIFETIME = {
   ACCESS_TOKEN: 3600 * 4, // 4 hours
   REFRESH_TOKEN: 1209600 // 2 weeks
+}
+
+const ROUTE_CACHE_LIFETIME = {
+  FEEDS: 1000 * 60 * 15, // 15 minutes
+  ACTIVITY_PUB: {
+    VIDEOS: 1000 // 1 second, cache concurrent requests after a broadcast for example
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,9 +85,10 @@ const JOB_CONCURRENCY: { [ id in JobType ]: number } = {
   'video-file': 1,
   'email': 5
 }
-const BROADCAST_CONCURRENCY = 5 // How many requests in parallel we do in activitypub-http-broadcast job
-// 2 days
-const JOB_COMPLETED_LIFETIME = 60000 * 60 * 24 * 2
+const BROADCAST_CONCURRENCY = 10 // How many requests in parallel we do in activitypub-http-broadcast job
+const JOB_REQUEST_TIMEOUT = 3000 // 3 seconds
+const JOB_REQUEST_TTL = 60000 * 10 // 10 minutes
+const JOB_COMPLETED_LIFETIME = 60000 * 60 * 24 * 2 // 2 days
 
 // 1 hour
 let SCHEDULER_INTERVAL = 60000 * 60
@@ -103,7 +111,8 @@ const CONFIG = {
   REDIS: {
     HOSTNAME: config.get<string>('redis.hostname'),
     PORT: config.get<number>('redis.port'),
-    AUTH: config.get<string>('redis.auth')
+    AUTH: config.get<string>('redis.auth'),
+    DB: config.get<number>('redis.db')
   },
   SMTP: {
     HOSTNAME: config.get<string>('smtp.hostname'),
@@ -141,7 +150,13 @@ const CONFIG = {
   },
   SIGNUP: {
     get ENABLED () { return config.get<boolean>('signup.enabled') },
-    get LIMIT () { return config.get<number>('signup.limit') }
+    get LIMIT () { return config.get<number>('signup.limit') },
+    FILTERS: {
+      CIDR: {
+        get WHITELIST () { return config.get<string[]>('signup.filters.cidr.whitelist') },
+        get BLACKLIST () { return config.get<string[]>('signup.filters.cidr.blacklist') }
+      }
+    }
   },
   USER: {
     get VIDEO_QUOTA () { return config.get<number>('user.video_quota') }
@@ -172,6 +187,13 @@ const CONFIG = {
     CUSTOMIZATIONS: {
       get JAVASCRIPT () { return config.get<string>('instance.customizations.javascript') },
       get CSS () { return config.get<string>('instance.customizations.css') }
+    },
+    get ROBOTS () { return config.get<string>('instance.robots') }
+  },
+  SERVICES: {
+    TWITTER: {
+      get USERNAME () { return config.get<string>('services.twitter.username') },
+      get WHITELISTED () { return config.get<boolean>('services.twitter.whitelisted') }
     }
   }
 }
@@ -191,8 +213,8 @@ const CONSTRAINTS_FIELDS = {
   },
   VIDEO_CHANNELS: {
     NAME: { min: 3, max: 120 }, // Length
-    DESCRIPTION: { min: 3, max: 250 }, // Length
-    SUPPORT: { min: 3, max: 300 }, // Length
+    DESCRIPTION: { min: 3, max: 500 }, // Length
+    SUPPORT: { min: 3, max: 500 }, // Length
     URL: { min: 3, max: 2000 } // Length
   },
   VIDEOS: {
@@ -200,7 +222,7 @@ const CONSTRAINTS_FIELDS = {
     LANGUAGE: { min: 1, max: 10 }, // Length
     TRUNCATED_DESCRIPTION: { min: 3, max: 250 }, // Length
     DESCRIPTION: { min: 3, max: 10000 }, // Length
-    SUPPORT: { min: 3, max: 300 }, // Length
+    SUPPORT: { min: 3, max: 500 }, // Length
     IMAGE: {
       EXTNAME: [ '.jpg', '.jpeg' ],
       FILE_SIZE: {
@@ -406,8 +428,7 @@ const OPENGRAPH_AND_OEMBED_COMMENT = '<!-- open graph and oembed tags -->'
 // ---------------------------------------------------------------------------
 
 const FEEDS = {
-  COUNT: 20,
-  CACHE_LIFETIME: 1000 * 60 * 15 // 15 minutes
+  COUNT: 20
 }
 
 // ---------------------------------------------------------------------------
@@ -451,6 +472,7 @@ export {
   FOLLOW_STATES,
   SERVER_ACTOR_NAME,
   PRIVATE_RSA_KEY_SIZE,
+  ROUTE_CACHE_LIFETIME,
   SORTABLE_COLUMNS,
   FEEDS,
   NSFW_POLICY_TYPES,
@@ -466,6 +488,8 @@ export {
   VIDEO_RATE_TYPES,
   VIDEO_MIMETYPE_EXT,
   VIDEO_TRANSCODING_FPS,
+  JOB_REQUEST_TIMEOUT,
+  JOB_REQUEST_TTL,
   USER_PASSWORD_RESET_LIFETIME,
   IMAGE_MIMETYPE_EXT,
   SCHEDULER_INTERVAL,

@@ -1,8 +1,6 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, OnDestroy, OnInit } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
 import { NotificationsService } from 'angular2-notifications'
-import 'rxjs/add/observable/from'
-import 'rxjs/add/operator/concatAll'
 import { MyAccountVideoChannelEdit } from './my-account-video-channel-edit'
 import { FormBuilder, FormGroup } from '@angular/forms'
 import { VideoChannelUpdate } from '../../../../../shared/models/videos'
@@ -12,8 +10,9 @@ import {
   VIDEO_CHANNEL_SUPPORT
 } from '@app/shared/forms/form-validators/video-channel'
 import { VideoChannelService } from '@app/shared/video-channel/video-channel.service'
-import { Subscription } from 'rxjs/Subscription'
+import { Subscription } from 'rxjs'
 import { VideoChannel } from '@app/shared/video-channel/video-channel.model'
+import { AuthService } from '@app/core'
 
 @Component({
   selector: 'my-account-video-channel-update',
@@ -39,6 +38,7 @@ export class MyAccountVideoChannelUpdateComponent extends MyAccountVideoChannelE
   private paramsSub: Subscription
 
   constructor (
+    private authService: AuthService,
     private notificationsService: NotificationsService,
     private router: Router,
     private route: ActivatedRoute,
@@ -90,12 +90,13 @@ export class MyAccountVideoChannelUpdateComponent extends MyAccountVideoChannelE
     const body = this.form.value
     const videoChannelUpdate: VideoChannelUpdate = {
       displayName: body['display-name'],
-      description: body.description,
-      support: body.support
+      description: body.description || null,
+      support: body.support || null
     }
 
     this.videoChannelService.updateVideoChannel(this.videoChannelToUpdate.uuid, videoChannelUpdate).subscribe(
       () => {
+        this.authService.refreshUserInformation()
         this.notificationsService.success('Success', `Video channel ${videoChannelUpdate.displayName} updated.`)
         this.router.navigate([ '/my-account', 'video-channels' ])
       },
@@ -109,8 +110,6 @@ export class MyAccountVideoChannelUpdateComponent extends MyAccountVideoChannelE
   }
 
   getFormButtonTitle () {
-    return this.videoChannelToUpdate
-      ? 'Update ' + this.videoChannelToUpdate.displayName + ' video channel'
-      : 'Update'
+    return 'Update'
   }
 }

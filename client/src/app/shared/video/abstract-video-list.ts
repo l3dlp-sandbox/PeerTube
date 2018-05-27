@@ -1,13 +1,11 @@
+import { debounceTime } from 'rxjs/operators'
 import { ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Location } from '@angular/common'
 import { isInMobileView } from '@app/shared/misc/utils'
 import { InfiniteScrollerDirective } from '@app/shared/video/infinite-scroller.directive'
 import { NotificationsService } from 'angular2-notifications'
-import 'rxjs/add/operator/debounceTime'
-import { Observable } from 'rxjs/Observable'
-import { fromEvent } from 'rxjs/observable/fromEvent'
-import { Subscription } from 'rxjs/Subscription'
+import { fromEvent, Observable, Subscription } from 'rxjs'
 import { AuthService } from '../../core/auth'
 import { ComponentPagination } from '../rest/component-pagination.model'
 import { VideoSortField } from './sort-field.type'
@@ -24,8 +22,8 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
     itemsPerPage: 10,
     totalItems: null
   }
-  sort: VideoSortField = '-createdAt'
-  defaultSort: VideoSortField = '-createdAt'
+  sort: VideoSortField = '-publishedAt'
+  defaultSort: VideoSortField = '-publishedAt'
   syndicationItems = []
 
   loadOnInit = true
@@ -47,6 +45,7 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
   abstract titlePage: string
 
   protected loadedPages: { [ id: number ]: Video[] } = {}
+  protected loadingPage: { [ id: number ]: boolean } = {}
   protected otherRouteParams = {}
 
   private resizeSubscription: Subscription
@@ -64,7 +63,7 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
     this.loadRouteParams(routeParams)
 
     this.resizeSubscription = fromEvent(window, 'resize')
-      .debounceTime(500)
+      .pipe(debounceTime(500))
       .subscribe(() => this.calcPageSizes())
 
     this.calcPageSizes()
@@ -97,11 +96,15 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
 
   loadMoreVideos (page: number) {
     if (this.loadedPages[page] !== undefined) return
+    if (this.loadingPage[page] === true) return
 
+    this.loadingPage[page] = true
     const observable = this.getVideosObservable(page)
 
     observable.subscribe(
       ({ videos, totalVideos }) => {
+        this.loadingPage[page] = false
+
         // Paging is too high, return to the first one
         if (this.pagination.currentPage > 1 && totalVideos <= ((this.pagination.currentPage - 1) * this.pagination.itemsPerPage)) {
           this.pagination.currentPage = 1
@@ -119,7 +122,10 @@ export abstract class AbstractVideoList implements OnInit, OnDestroy {
           setTimeout(() => this.infiniteScroller.initialize(), 500)
         }
       },
-      error => this.notificationsService.error('Error', error.message)
+      error => {
+        this.loadingPage[page] = false
+        this.notificationsService.error('Error', error.message)
+      }
     )
   }
 

@@ -5,7 +5,7 @@ import * as request from 'request'
 import { ActivityIconObject } from '../../../shared/index'
 import { VideoTorrentObject } from '../../../shared/models/activitypub/objects'
 import { VideoPrivacy, VideoRateType } from '../../../shared/models/videos'
-import { isVideoTorrentObjectValid } from '../../helpers/custom-validators/activitypub/videos'
+import { sanitizeAndCheckVideoTorrentObject } from '../../helpers/custom-validators/activitypub/videos'
 import { isVideoFileInfoHashValid } from '../../helpers/custom-validators/videos'
 import { retryTransactionWrapper } from '../../helpers/database-utils'
 import { logger } from '../../helpers/logger'
@@ -20,6 +20,7 @@ import { VideoFileModel } from '../../models/video/video-file'
 import { VideoShareModel } from '../../models/video/video-share'
 import { getOrCreateActorAndServerAndModel } from './actor'
 import { addVideoComments } from './video-comments'
+import { crawlCollectionPage } from './crawl'
 
 function fetchRemoteVideoPreview (video: VideoModel, reject: Function) {
   const host = video.VideoChannel.Account.Actor.Server.host
@@ -137,6 +138,13 @@ function videoFileActivityUrlToDBAttributes (videoCreated: VideoModel, videoObje
   return attributes
 }
 
+function getOrCreateVideoChannel (videoObject: VideoTorrentObject) {
+  const channel = videoObject.attributedTo.find(a => a.type === 'Group')
+  if (!channel) throw new Error('Cannot find associated video channel to video ' + videoObject.url)
+
+  return getOrCreateActorAndServerAndModel(channel.id)
+}
+
 async function getOrCreateVideo (videoObject: VideoTorrentObject, channelActor: ActorModel) {
   logger.debug('Adding remote video %s.', videoObject.id)
 
@@ -199,10 +207,7 @@ async function getOrCreateAccountAndVideoAndChannel (videoObject: VideoTorrentOb
     actor = await getOrCreateActorAndServerAndModel(actorObj.id)
   }
 
-  const channel = videoObject.attributedTo.find(a => a.type === 'Group')
-  if (!channel) throw new Error('Cannot find associated video channel to video ' + videoObject.url)
-
-  const channelActor = await getOrCreateActorAndServerAndModel(channel.id)
+  const channelActor = await getOrCreateVideoChannel(videoObject)
 
   const options = {
     arguments: [ videoObject, channelActor ],
@@ -212,25 +217,17 @@ async function getOrCreateAccountAndVideoAndChannel (videoObject: VideoTorrentOb
   const video = await retryTransactionWrapper(getOrCreateVideo, options)
 
   // Process outside the transaction because we could fetch remote data
-  if (videoObject.likes && Array.isArray(videoObject.likes.orderedItems)) {
-    logger.info('Adding likes of video %s.', video.uuid)
-    await createRates(videoObject.likes.orderedItems, video, 'like')
-  }
+  logger.info('Adding likes of video %s.', video.uuid)
+  await crawlCollectionPage<string>(videoObject.likes, (items) => createRates(items, video, 'like'))
 
-  if (videoObject.dislikes && Array.isArray(videoObject.dislikes.orderedItems)) {
-    logger.info('Adding dislikes of video %s.', video.uuid)
-    await createRates(videoObject.dislikes.orderedItems, video, 'dislike')
-  }
+  logger.info('Adding dislikes of video %s.', video.uuid)
+  await crawlCollectionPage<string>(videoObject.dislikes, (items) => createRates(items, video, 'dislike'))
 
-  if (videoObject.shares && Array.isArray(videoObject.shares.orderedItems)) {
-    logger.info('Adding shares of video %s.', video.uuid)
-    await addVideoShares(video, videoObject.shares.orderedItems)
-  }
+  logger.info('Adding shares of video %s.', video.uuid)
+  await crawlCollectionPage<string>(videoObject.shares, (items) => addVideoShares(items, video))
 
-  if (videoObject.comments && Array.isArray(videoObject.comments.orderedItems)) {
-    logger.info('Adding comments of video %s.', video.uuid)
-    await addVideoComments(video, videoObject.comments.orderedItems)
-  }
+  logger.info('Adding comments of video %s.', video.uuid)
+  await crawlCollectionPage<string>(videoObject.comments, (items) => addVideoComments(items, video))
 
   return { actor, channelActor, video }
 }
@@ -262,7 +259,7 @@ async function createRates (actorUrls: string[], video: VideoModel, rate: VideoR
   return
 }
 
-async function addVideoShares (instance: VideoModel, shareUrls: string[]) {
+async function addVideoShares (shareUrls: string[], instance: VideoModel) {
   for (const shareUrl of shareUrls) {
     // Fetch url
     const { body } = await doRequest({
@@ -301,7 +298,9 @@ export {
   videoActivityObjectToDBAttributes,
   videoFileActivityUrlToDBAttributes,
   getOrCreateVideo,
-  addVideoShares}
+  getOrCreateVideoChannel,
+  addVideoShares
+}
 
 // ---------------------------------------------------------------------------
 
@@ -317,7 +316,7 @@ async function fetchRemoteVideo (videoUrl: string): Promise<VideoTorrentObject> 
 
   const { body } = await doRequest(options)
 
-  if (isVideoTorrentObjectValid(body) === false) {
+  if (sanitizeAndCheckVideoTorrentObject(body) === false) {
     logger.debug('Remote video JSON is not valid.', { body })
     return undefined
   }

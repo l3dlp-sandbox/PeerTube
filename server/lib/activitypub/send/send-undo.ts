@@ -1,21 +1,23 @@
 import { Transaction } from 'sequelize'
-import { ActivityAudience, ActivityCreate, ActivityFollow, ActivityLike, ActivityUndo } from '../../../../shared/models/activitypub'
+import {
+  ActivityAnnounce,
+  ActivityAudience,
+  ActivityCreate,
+  ActivityFollow,
+  ActivityLike,
+  ActivityUndo
+} from '../../../../shared/models/activitypub'
 import { ActorModel } from '../../../models/activitypub/actor'
 import { ActorFollowModel } from '../../../models/activitypub/actor-follow'
 import { VideoModel } from '../../../models/video/video'
 import { getActorFollowActivityPubUrl, getUndoActivityPubUrl, getVideoDislikeActivityPubUrl, getVideoLikeActivityPubUrl } from '../url'
-import {
-  audiencify,
-  broadcastToFollowers,
-  getActorsInvolvedInVideo,
-  getAudience,
-  getObjectFollowersAudience,
-  getOriginVideoAudience,
-  unicastTo
-} from './misc'
+import { broadcastToFollowers, unicastTo } from './utils'
+import { audiencify, getActorsInvolvedInVideo, getAudience, getObjectFollowersAudience, getVideoAudience } from '../audience'
 import { createActivityData, createDislikeActivityData } from './send-create'
 import { followActivityData } from './send-follow'
 import { likeActivityData } from './send-like'
+import { VideoShareModel } from '../../../models/video/video-share'
+import { buildVideoAnnounce } from './send-announce'
 
 async function sendUndoFollow (actorFollow: ActorFollowModel, t: Transaction) {
   const me = actorFollow.ActorFollower
@@ -39,7 +41,7 @@ async function sendUndoLike (byActor: ActorModel, video: VideoModel, t: Transact
 
   // Send to origin
   if (video.isOwned() === false) {
-    const audience = getOriginVideoAudience(video, actorsInvolvedInVideo)
+    const audience = getVideoAudience(video, actorsInvolvedInVideo)
     const data = await undoActivityData(undoUrl, byActor, object, t, audience)
 
     return unicastTo(data, byActor, video.VideoChannel.Account.Actor.sharedInboxUrl)
@@ -58,10 +60,10 @@ async function sendUndoDislike (byActor: ActorModel, video: VideoModel, t: Trans
 
   const actorsInvolvedInVideo = await getActorsInvolvedInVideo(video, t)
   const dislikeActivity = createDislikeActivityData(byActor, video)
-  const object = await createActivityData(undoUrl, byActor, dislikeActivity, t)
+  const object = await createActivityData(dislikeUrl, byActor, dislikeActivity, t)
 
   if (video.isOwned() === false) {
-    const audience = getOriginVideoAudience(video, actorsInvolvedInVideo)
+    const audience = getVideoAudience(video, actorsInvolvedInVideo)
     const data = await undoActivityData(undoUrl, byActor, object, t, audience)
 
     return unicastTo(data, byActor, video.VideoChannel.Account.Actor.sharedInboxUrl)
@@ -73,12 +75,24 @@ async function sendUndoDislike (byActor: ActorModel, video: VideoModel, t: Trans
   return broadcastToFollowers(data, byActor, actorsInvolvedInVideo, t, followersException)
 }
 
+async function sendUndoAnnounce (byActor: ActorModel, videoShare: VideoShareModel, video: VideoModel, t: Transaction) {
+  const undoUrl = getUndoActivityPubUrl(videoShare.url)
+
+  const actorsInvolvedInVideo = await getActorsInvolvedInVideo(video, t)
+  const object = await buildVideoAnnounce(byActor, videoShare, video, t)
+  const data = await undoActivityData(undoUrl, byActor, object, t)
+
+  const followersException = [ byActor ]
+  return broadcastToFollowers(data, byActor, actorsInvolvedInVideo, t, followersException)
+}
+
 // ---------------------------------------------------------------------------
 
 export {
   sendUndoFollow,
   sendUndoLike,
-  sendUndoDislike
+  sendUndoDislike,
+  sendUndoAnnounce
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +100,7 @@ export {
 async function undoActivityData (
   url: string,
   byActor: ActorModel,
-  object: ActivityFollow | ActivityLike | ActivityCreate,
+  object: ActivityFollow | ActivityLike | ActivityCreate | ActivityAnnounce,
   t: Transaction,
   audience?: ActivityAudience
 ): Promise<ActivityUndo> {

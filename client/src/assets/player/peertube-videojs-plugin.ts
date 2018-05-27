@@ -8,12 +8,15 @@ import {
   getAverageBandwidth,
   getStoredMute,
   getStoredVolume,
+  isMobile,
   saveAverageBandwidth,
   saveMuteInStore,
   saveVolumeInStore
 } from './utils'
 import minBy from 'lodash-es/minBy'
 import maxBy from 'lodash-es/maxBy'
+import * as CacheChunkStore from 'cache-chunk-store'
+import { PeertubeChunkStore } from './peertube-chunk-store'
 
 const webtorrent = new WebTorrent({
   tracker: {
@@ -68,7 +71,8 @@ class PeerTubePlugin extends Plugin {
   constructor (player: videojs.Player, options: PeertubePluginOptions) {
     super(player, options)
 
-    this.autoplay = options.autoplay
+    // Disable auto play on iOS
+    this.autoplay = options.autoplay && this.isIOS() === false
 
     this.startTime = options.startTime
     this.videoFiles = options.videoFiles
@@ -169,7 +173,13 @@ class PeerTubePlugin extends Plugin {
     console.log('Adding ' + magnetOrTorrentUrl + '.')
 
     const oldTorrent = this.torrent
-    this.torrent = webtorrent.add(magnetOrTorrentUrl, torrent => {
+    const options = {
+      store: (chunkLength, storeOpts) => new CacheChunkStore(new PeertubeChunkStore(chunkLength, storeOpts), {
+        max: 100
+      })
+    }
+
+    this.torrent = webtorrent.add(magnetOrTorrentUrl, options, torrent => {
       console.log('Added ' + magnetOrTorrentUrl + '.')
 
       // Pause the old torrent
@@ -179,6 +189,7 @@ class PeerTubePlugin extends Plugin {
         oldTorrent.removePeer(oldTorrent['ws'])
       }
 
+      // Render the video in a few seconds? (on resolution change for example, we wait some seconds of the new video resolution)
       this.addTorrentDelay = setTimeout(() => {
         this.flushVideoFile(previousVideoFile)
 
@@ -336,6 +347,12 @@ class PeerTubePlugin extends Plugin {
         this.tryToPlay()
       })
     } else {
+      // Don't try on iOS that does not support MediaSource
+      if (this.isIOS()) {
+        this.currentVideoFile = this.videoFiles[0]
+        return this.fallbackToHttp(undefined, false)
+      }
+
       // Proxy first play
       const oldPlay = this.player.play.bind(this.player)
       this.player.play = () => {
@@ -438,7 +455,7 @@ class PeerTubePlugin extends Plugin {
     return fetch(this.videoViewUrl, { method: 'POST' })
   }
 
-  private fallbackToHttp (done: Function) {
+  private fallbackToHttp (done?: Function, play = true) {
     this.flushVideoFile(this.currentVideoFile, true)
     this.torrent = null
 
@@ -448,9 +465,9 @@ class PeerTubePlugin extends Plugin {
     const httpUrl = this.currentVideoFile.fileUrl
     this.player.src = this.savePlayerSrcFunction
     this.player.src(httpUrl)
-    this.player.play()
+    if (play) this.tryToPlay()
 
-    return done()
+    if (done) return done()
   }
 
   private handleError (err: Error | string) {
@@ -463,6 +480,10 @@ class PeerTubePlugin extends Plugin {
 
   private disableErrorDisplay () {
     this.player.removeClass('vjs-error-display-enabled')
+  }
+
+  private isIOS () {
+    return !!navigator.platform && /iPad|iPhone|iPod/.test(navigator.platform)
   }
 
   private alterInactivity () {

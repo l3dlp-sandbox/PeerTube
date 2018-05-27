@@ -22,14 +22,17 @@ function checkMissedConfig () {
     'webserver.https', 'webserver.hostname', 'webserver.port',
     'trust_proxy',
     'database.hostname', 'database.port', 'database.suffix', 'database.username', 'database.password',
-    'redis.hostname', 'redis.port', 'redis.auth',
+    'redis.hostname', 'redis.port', 'redis.auth', 'redis.db',
     'smtp.hostname', 'smtp.port', 'smtp.username', 'smtp.password', 'smtp.tls', 'smtp.from_address',
     'storage.avatars', 'storage.videos', 'storage.logs', 'storage.previews', 'storage.thumbnails', 'storage.torrents', 'storage.cache',
     'log.level',
     'user.video_quota',
-    'cache.previews.size', 'admin.email', 'signup.enabled', 'signup.limit', 'transcoding.enabled', 'transcoding.threads',
+    'cache.previews.size', 'admin.email',
+    'signup.enabled', 'signup.limit', 'signup.filters.cidr.whitelist', 'signup.filters.cidr.blacklist',
+    'transcoding.enabled', 'transcoding.threads',
     'instance.name', 'instance.short_description', 'instance.description', 'instance.terms', 'instance.default_client_route',
-    'instance.default_nsfw_policy'
+    'instance.default_nsfw_policy', 'instance.robots',
+    'services.twitter.username', 'services.twitter.whitelisted'
   ]
   const miss: string[] = []
 

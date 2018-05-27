@@ -2,7 +2,7 @@ import * as express from 'express'
 import { createClient, RedisClient } from 'redis'
 import { logger } from '../helpers/logger'
 import { generateRandomString } from '../helpers/utils'
-import { CONFIG, FEEDS, USER_PASSWORD_RESET_LIFETIME, VIDEO_VIEW_LIFETIME } from '../initializers'
+import { CONFIG, USER_PASSWORD_RESET_LIFETIME, VIDEO_VIEW_LIFETIME } from '../initializers'
 
 type CachedRoute = {
   body: string,
@@ -26,7 +26,8 @@ class Redis {
 
     this.client = createClient({
       host: CONFIG.REDIS.HOSTNAME,
-      port: CONFIG.REDIS.PORT
+      port: CONFIG.REDIS.PORT,
+      db: CONFIG.REDIS.DB
     })
 
     this.client.on('error', err => {
@@ -67,14 +68,14 @@ class Redis {
     return cached as CachedRoute
   }
 
-  setCachedRoute (req: express.Request, body: any, contentType?: string, statusCode?: number) {
+  setCachedRoute (req: express.Request, body: any, lifetime: number, contentType?: string, statusCode?: number) {
     const cached: CachedRoute = {
       body: body.toString(),
       contentType,
       statusCode: statusCode.toString()
     }
 
-    return this.setObject(this.buildCachedRouteKey(req), cached, FEEDS.CACHE_LIFETIME)
+    return this.setObject(this.buildCachedRouteKey(req), cached, lifetime)
   }
 
   listJobs (jobsPrefix: string, state: string, mode: 'alpha', order: 'ASC' | 'DESC', offset: number, count: number) {
@@ -85,6 +86,18 @@ class Redis {
         return res(values)
       })
     })
+  }
+
+  generateResetPasswordKey (userId: number) {
+    return 'reset-password-' + userId
+  }
+
+  buildViewKey (ip: string, videoUUID: string) {
+    return videoUUID + '-' + ip
+  }
+
+  buildCachedRouteKey (req: express.Request) {
+    return req.method + '-' + req.originalUrl
   }
 
   private getValue (key: string) {
@@ -143,18 +156,6 @@ class Redis {
         return res(existsNumber === 1)
       })
     })
-  }
-
-  private generateResetPasswordKey (userId: number) {
-    return 'reset-password-' + userId
-  }
-
-  private buildViewKey (ip: string, videoUUID: string) {
-    return videoUUID + '-' + ip
-  }
-
-  private buildCachedRouteKey (req: express.Request) {
-    return req.method + '-' + req.originalUrl
   }
 
   static get Instance () {

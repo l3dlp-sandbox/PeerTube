@@ -18,7 +18,7 @@ describe('Test videos API validator', function () {
   const path = '/api/v1/videos/'
   let server: ServerInfo
   let userAccessToken = ''
-  let accountUUID: string
+  let accountName: string
   let channelId: number
   let channelUUID: string
   let videoId
@@ -43,7 +43,7 @@ describe('Test videos API validator', function () {
       const res = await getMyUserInformation(server.url, server.accessToken)
       channelId = res.body.videoChannels[ 0 ].id
       channelUUID = res.body.videoChannels[ 0 ].uuid
-      accountUUID = res.body.account.uuid
+      accountName = res.body.account.name + '@' + res.body.account.host
     }
   })
 
@@ -116,7 +116,7 @@ describe('Test videos API validator', function () {
     let path: string
 
     before(async function () {
-      path = '/api/v1/accounts/' + accountUUID + '/videos'
+      path = '/api/v1/accounts/' + accountName + '/videos'
     })
 
     it('Should fail with a bad start pagination', async function () {
@@ -231,22 +231,8 @@ describe('Test videos API validator', function () {
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
     })
 
-    it('Should fail with a bad nsfw attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { nsfw: 2 })
-      const attaches = baseCorrectAttaches
-
-      await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
-    })
-
     it('Should fail without commentsEnabled attribute', async function () {
       const fields = omit(baseCorrectParams, 'commentsEnabled')
-      const attaches = baseCorrectAttaches
-
-      await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
-    })
-
-    it('Should fail with a bad commentsEnabled attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { commentsEnabled: 2 })
       const attaches = baseCorrectAttaches
 
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
@@ -260,7 +246,7 @@ describe('Test videos API validator', function () {
     })
 
     it('Should fail with a long support text', async function () {
-      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(70) })
+      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(150) })
       const attaches = baseCorrectAttaches
 
       await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
@@ -294,7 +280,7 @@ describe('Test videos API validator', function () {
       const fields = immutableAssign(baseCorrectParams, { channelId: customChannelId })
       const attaches = baseCorrectAttaches
 
-      await makeUploadRequest({ url: server.url, path: path + '/upload', token: server.accessToken, fields, attaches })
+      await makeUploadRequest({ url: server.url, path: path + '/upload', token: userAccessToken, fields, attaches })
     })
 
     it('Should fail with too many tags', async function () {
@@ -485,18 +471,6 @@ describe('Test videos API validator', function () {
       await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
     })
 
-    it('Should fail with a bad nsfw attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { nsfw: 2 })
-
-      await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
-    })
-
-    it('Should fail with a bad commentsEnabled attribute', async function () {
-      const fields = immutableAssign(baseCorrectParams, { commentsEnabled: 2 })
-
-      await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
-    })
-
     it('Should fail with a long description', async function () {
       const fields = immutableAssign(baseCorrectParams, { description: 'super'.repeat(2500) })
 
@@ -504,7 +478,13 @@ describe('Test videos API validator', function () {
     })
 
     it('Should fail with a long support text', async function () {
-      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(70) })
+      const fields = immutableAssign(baseCorrectParams, { support: 'super'.repeat(150) })
+
+      await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
+    })
+
+    it('Should fail with a bad channel', async function () {
+      const fields = immutableAssign(baseCorrectParams, { channelId: 545454 })
 
       await makePutBodyRequest({ url: server.url, path: path + videoId, token: server.accessToken, fields })
     })

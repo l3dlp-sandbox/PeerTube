@@ -1,8 +1,6 @@
 import { Component, OnInit } from '@angular/core'
 import { Router } from '@angular/router'
 import { NotificationsService } from 'angular2-notifications'
-import 'rxjs/add/observable/from'
-import 'rxjs/add/operator/concatAll'
 import { MyAccountVideoChannelEdit } from './my-account-video-channel-edit'
 import { FormBuilder, FormGroup } from '@angular/forms'
 import { VideoChannelCreate } from '../../../../../shared/models/videos'
@@ -12,6 +10,7 @@ import {
   VIDEO_CHANNEL_SUPPORT
 } from '@app/shared/forms/form-validators/video-channel'
 import { VideoChannelService } from '@app/shared/video-channel/video-channel.service'
+import { AuthService } from '@app/core'
 
 @Component({
   selector: 'my-account-video-channel-create',
@@ -34,6 +33,7 @@ export class MyAccountVideoChannelCreateComponent extends MyAccountVideoChannelE
   }
 
   constructor (
+    private authService: AuthService,
     private notificationsService: NotificationsService,
     private router: Router,
     private formBuilder: FormBuilder,
@@ -62,12 +62,13 @@ export class MyAccountVideoChannelCreateComponent extends MyAccountVideoChannelE
     const body = this.form.value
     const videoChannelCreate: VideoChannelCreate = {
       displayName: body['display-name'],
-      description: body.description,
-      support: body.support
+      description: body.description || null,
+      support: body.support || null
     }
 
     this.videoChannelService.createVideoChannel(videoChannelCreate).subscribe(
       () => {
+        this.authService.refreshUserInformation()
         this.notificationsService.success('Success', `Video channel ${videoChannelCreate.displayName} created.`)
         this.router.navigate([ '/my-account', 'video-channels' ])
       },
@@ -81,6 +82,6 @@ export class MyAccountVideoChannelCreateComponent extends MyAccountVideoChannelE
   }
 
   getFormButtonTitle () {
-    return 'Create this video channel'
+    return 'Create'
   }
 }

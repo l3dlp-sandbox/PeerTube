@@ -3,11 +3,17 @@
 
 .root {
   display: flex;
-  
+
   textarea {
     @include peertube-textarea(100%, 150px);
 
     margin-bottom: 15px;
+  }
+
+  .previews {
+    max-height: 150px;
+    overflow-y: auto;
+    flex-grow: 1;
   }
 
   /deep/ {

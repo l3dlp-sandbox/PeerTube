@@ -5,7 +5,6 @@ import * as parseTorrent from 'parse-torrent'
 import { join } from 'path'
 import * as Sequelize from 'sequelize'
 import {
-  AfterDestroy,
   AllowNull,
   BeforeDestroy,
   BelongsTo,
@@ -30,9 +29,13 @@ import { VideoPrivacy, VideoResolution } from '../../../shared'
 import { VideoTorrentObject } from '../../../shared/models/activitypub/objects'
 import { Video, VideoDetails, VideoFile } from '../../../shared/models/videos'
 import { VideoFilter } from '../../../shared/models/videos/video-query.type'
-import { activityPubCollection } from '../../helpers/activitypub'
+import { activityPubCollectionPagination } from '../../helpers/activitypub'
 import {
-  createTorrentPromise, peertubeTruncate, renamePromise, statPromise, unlinkPromise,
+  createTorrentPromise,
+  peertubeTruncate,
+  renamePromise,
+  statPromise,
+  unlinkPromise,
   writeFilePromise
 } from '../../helpers/core-utils'
 import { isActivityPubUrlValid } from '../../helpers/custom-validators/activitypub/misc'
@@ -130,11 +133,27 @@ enum ScopeNames {
     }
 
     const videoChannelInclude = {
-      attributes: [ 'name', 'description' ],
+      attributes: [ 'name', 'description', 'id' ],
       model: VideoChannelModel.unscoped(),
       required: true,
       where: {},
       include: [
+        {
+          attributes: [ 'uuid', 'preferredUsername', 'url', 'serverId', 'avatarId' ],
+          model: ActorModel.unscoped(),
+          required: true,
+          include: [
+            {
+              attributes: [ 'host' ],
+              model: ServerModel.unscoped(),
+              required: false
+            },
+            {
+              model: AvatarModel.unscoped(),
+              required: false
+            }
+          ]
+        },
         accountInclude
       ]
     }
@@ -255,6 +274,7 @@ enum ScopeNames {
   [ScopeNames.WITH_SHARES]: {
     include: [
       {
+        ['separate' as any]: true,
         model: () => VideoShareModel.unscoped()
       }
     ]
@@ -262,6 +282,7 @@ enum ScopeNames {
   [ScopeNames.WITH_RATES]: {
     include: [
       {
+        ['separate' as any]: true,
         model: () => AccountVideoRateModel,
         include: [
           {
@@ -281,6 +302,7 @@ enum ScopeNames {
   [ScopeNames.WITH_COMMENTS]: {
     include: [
       {
+        ['separate' as any]: true,
         model: () => VideoCommentModel.unscoped()
       }
     ]
@@ -580,18 +602,6 @@ export class VideoModel extends Model<VideoModel> {
           attributes: [ 'id', 'url' ],
           model: VideoShareModel.unscoped(),
           required: false,
-          where: {
-            [Sequelize.Op.and]: [
-              {
-                id: {
-                  [Sequelize.Op.not]: null
-                }
-              },
-              {
-                actorId
-              }
-            ]
-          },
           include: [
             {
               attributes: [ 'id', 'url' ],
@@ -621,35 +631,6 @@ export class VideoModel extends Model<VideoModel> {
               required: true
             }
           ]
-        },
-        {
-          attributes: [ 'type' ],
-          model: AccountVideoRateModel,
-          required: false,
-          include: [
-            {
-              attributes: [ 'id' ],
-              model: AccountModel.unscoped(),
-              include: [
-                {
-                  attributes: [ 'url' ],
-                  model: ActorModel.unscoped(),
-                  include: [
-                    {
-                      attributes: [ 'host' ],
-                      model: ServerModel,
-                      required: false
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          attributes: [ 'url' ],
-          model: VideoCommentModel,
-          required: false
         },
         VideoFileModel,
         TagModel
@@ -771,12 +752,17 @@ export class VideoModel extends Model<VideoModel> {
             }
           },
           {
-            preferredUsername: Sequelize.where(Sequelize.col('preferredUsername'), {
+            preferredUsernameChannel: Sequelize.where(Sequelize.col('VideoChannel->Actor.preferredUsername'), {
               [ Sequelize.Op.iLike ]: '%' + value + '%'
             })
           },
           {
-            host: Sequelize.where(Sequelize.col('host'), {
+            preferredUsernameAccount: Sequelize.where(Sequelize.col('VideoChannel->Account->Actor.preferredUsername'), {
+              [ Sequelize.Op.iLike ]: '%' + value + '%'
+            })
+          },
+          {
+            host: Sequelize.where(Sequelize.col('VideoChannel->Account->Actor->Server.host'), {
               [ Sequelize.Op.iLike ]: '%' + value + '%'
             })
           }
@@ -867,26 +853,6 @@ export class VideoModel extends Model<VideoModel> {
 
     return VideoModel
       .scope([ ScopeNames.WITH_TAGS, ScopeNames.WITH_FILES, ScopeNames.WITH_ACCOUNT_DETAILS ])
-      .findOne(options)
-  }
-
-  static loadAndPopulateAll (id: number) {
-    const options = {
-      order: [ [ 'Tags', 'name', 'ASC' ] ],
-      where: {
-        id
-      }
-    }
-
-    return VideoModel
-      .scope([
-        ScopeNames.WITH_RATES,
-        ScopeNames.WITH_SHARES,
-        ScopeNames.WITH_TAGS,
-        ScopeNames.WITH_FILES,
-        ScopeNames.WITH_ACCOUNT_DETAILS,
-        ScopeNames.WITH_COMMENTS
-      ])
       .findOne(options)
   }
 
@@ -1043,6 +1009,7 @@ export class VideoModel extends Model<VideoModel> {
 
   toFormattedJSON (): Video {
     const formattedAccount = this.VideoChannel.Account.toFormattedJSON()
+    const formattedVideoChannel = this.VideoChannel.toFormattedJSON()
 
     return {
       id: this.id,
@@ -1085,6 +1052,15 @@ export class VideoModel extends Model<VideoModel> {
         url: formattedAccount.url,
         host: formattedAccount.host,
         avatar: formattedAccount.avatar
+      },
+      channel: {
+        id: formattedVideoChannel.id,
+        uuid: formattedVideoChannel.uuid,
+        name: formattedVideoChannel.name,
+        displayName: formattedVideoChannel.displayName,
+        url: formattedVideoChannel.url,
+        host: formattedVideoChannel.host,
+        avatar: formattedVideoChannel.avatar
       }
     }
   }
@@ -1166,25 +1142,6 @@ export class VideoModel extends Model<VideoModel> {
       }
     }
 
-    let likesObject
-    let dislikesObject
-
-    if (Array.isArray(this.AccountVideoRates)) {
-      const res = this.toRatesActivityPubObjects()
-      likesObject = res.likesObject
-      dislikesObject = res.dislikesObject
-    }
-
-    let sharesObject
-    if (Array.isArray(this.VideoShares)) {
-      sharesObject = this.toAnnouncesActivityPubObject()
-    }
-
-    let commentsObject
-    if (Array.isArray(this.VideoComments)) {
-      commentsObject = this.toCommentsActivityPubObject()
-    }
-
     const url = []
     for (const file of this.VideoFiles) {
       url.push({
@@ -1243,10 +1200,10 @@ export class VideoModel extends Model<VideoModel> {
         height: THUMBNAILS_SIZE.height
       },
       url,
-      likes: likesObject,
-      dislikes: dislikesObject,
-      shares: sharesObject,
-      comments: commentsObject,
+      likes: getVideoLikesActivityPubUrl(this),
+      dislikes: getVideoDislikesActivityPubUrl(this),
+      shares: getVideoSharesActivityPubUrl(this),
+      comments: getVideoCommentsActivityPubUrl(this),
       attributedTo: [
         {
           type: 'Person',
@@ -1258,44 +1215,6 @@ export class VideoModel extends Model<VideoModel> {
         }
       ]
     }
-  }
-
-  toAnnouncesActivityPubObject () {
-    const shares: string[] = []
-
-    for (const videoShare of this.VideoShares) {
-      shares.push(videoShare.url)
-    }
-
-    return activityPubCollection(getVideoSharesActivityPubUrl(this), shares)
-  }
-
-  toCommentsActivityPubObject () {
-    const comments: string[] = []
-
-    for (const videoComment of this.VideoComments) {
-      comments.push(videoComment.url)
-    }
-
-    return activityPubCollection(getVideoCommentsActivityPubUrl(this), comments)
-  }
-
-  toRatesActivityPubObjects () {
-    const likes: string[] = []
-    const dislikes: string[] = []
-
-    for (const rate of this.AccountVideoRates) {
-      if (rate.type === 'like') {
-        likes.push(rate.Account.Actor.url)
-      } else if (rate.type === 'dislike') {
-        dislikes.push(rate.Account.Actor.url)
-      }
-    }
-
-    const likesObject = activityPubCollection(getVideoLikesActivityPubUrl(this), likes)
-    const dislikesObject = activityPubCollection(getVideoDislikesActivityPubUrl(this), dislikes)
-
-    return { likesObject, dislikesObject }
   }
 
   getTruncatedDescription () {

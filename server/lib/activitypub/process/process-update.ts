@@ -15,6 +15,7 @@ import { fetchAvatarIfExists, getOrCreateActorAndServerAndModel, updateActorAvat
 import {
   generateThumbnailFromUrl,
   getOrCreateAccountAndVideoAndChannel,
+  getOrCreateVideoChannel,
   videoActivityObjectToDBAttributes,
   videoFileActivityUrlToDBAttributes
 } from '../videos'
@@ -54,6 +55,10 @@ async function updateRemoteVideo (actor: ActorModel, activity: ActivityUpdate) {
 
   const res = await getOrCreateAccountAndVideoAndChannel(videoAttributesToUpdate.id)
 
+  // Fetch video channel outside the transaction
+  const newVideoChannelActor = await getOrCreateVideoChannel(videoAttributesToUpdate)
+  const newVideoChannel = newVideoChannelActor.VideoChannel
+
   logger.debug('Updating remote video "%s".', videoAttributesToUpdate.uuid)
   let videoInstance = res.video
   let videoFieldsSave: any
@@ -66,12 +71,13 @@ async function updateRemoteVideo (actor: ActorModel, activity: ActivityUpdate) {
 
       videoFieldsSave = videoInstance.toJSON()
 
+      // Check actor has the right to update the video
       const videoChannel = videoInstance.VideoChannel
       if (videoChannel.Account.Actor.id !== actor.id) {
         throw new Error('Account ' + actor.url + ' does not own video channel ' + videoChannel.Actor.url)
       }
 
-      const videoData = await videoActivityObjectToDBAttributes(videoChannel, videoAttributesToUpdate, activity.to)
+      const videoData = await videoActivityObjectToDBAttributes(newVideoChannel, videoAttributesToUpdate, activity.to)
       videoInstance.set('name', videoData.name)
       videoInstance.set('uuid', videoData.uuid)
       videoInstance.set('url', videoData.url)
@@ -87,6 +93,7 @@ async function updateRemoteVideo (actor: ActorModel, activity: ActivityUpdate) {
       videoInstance.set('updatedAt', videoData.updatedAt)
       videoInstance.set('views', videoData.views)
       videoInstance.set('privacy', videoData.privacy)
+      videoInstance.set('channelId', videoData.channelId)
 
       await videoInstance.save(sequelizeOptions)
 

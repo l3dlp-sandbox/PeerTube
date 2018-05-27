@@ -1,5 +1,54 @@
 # Changelog
 
+## v1.0.0-beta.6
+
+### Features
+
+ * Handle concurrent requests in cache middleware
+ * Add ability to enable registration by IP
+
+### Bug fixes
+
+ * Fix insane SQL request when loading all video attributes
+
+
+## v1.0.0-beta.5
+
+### BREAKING CHANGES
+
+ * Update Docker Compose (https://github.com/Chocobozzz/PeerTube/commit/fd5e57bbe2accbdb16b6aa65337c5ef44b5bd8fb)
+ * Rename client routes:
+   * `/admin/users/add` to `/admin/users/create`
+   * `/videos/edit/:uuid` to `/videos/update/:uuid`
+   * `/admin/users/:id/update` to `/admin/users/update/:id`
+
+
+### Features
+
+ * Adding basic helpers to guide users for comments/subscribe to accounts
+ * Add ability to move a video in another channel
+ * Improve web browser RAM consumption when watching (long) videos
+ * Support robots.txt in configuration
+ * Add ability to select the Redis database in configuration
+
+
+### Bug fixes
+
+ * Fix error message on token expiration
+ * Increase menu icon size
+ * Add timeout and TTL to request jobs to fix stuck job
+ * Fix responsive account about page
+ * Fix updating description account
+ * Account/video channel descriptions are not required anymore
+ * Fix video channel description and support max length (500 characters now)
+ * Fix "..." for buttons (delete/edit) in admin tables
+ * Fix overflow in markdown textarea preview
+ * Add ability to embed videos in a Twitter card
+ * Use `publishedAt` attribute when sorting videos
+ * Fix concurrent requests in videos list
+ * Fix player on iOS
+
+
 ## v1.0.0-beta.4
 
 ### BREAKING CHANGES
@@ -38,6 +87,7 @@
  * Handle errors in embed (video not found, server error...)
  * Account view (videos uploaded by this account + video channel owned by this account + about pages)
  * Video channel view (videos uploaded in this channel + about pages)
+ * Video channel management (avatar update is still missing)
 
 ### Bug fixes
 

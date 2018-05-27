@@ -17,7 +17,7 @@ function getParameterByName (name: string, url: string) {
   return decodeURIComponent(results[2].replace(/\+/g, ' '))
 }
 
-function populateAsyncUserVideoChannels (authService: AuthService, channel: any[]) {
+function populateAsyncUserVideoChannels (authService: AuthService, channel: { id: number, label: string, support: string }[]) {
   return new Promise(res => {
     authService.userInformationLoaded
       .subscribe(
@@ -28,7 +28,7 @@ function populateAsyncUserVideoChannels (authService: AuthService, channel: any[
           const videoChannels = user.videoChannels
           if (Array.isArray(videoChannels) === false) return
 
-          videoChannels.forEach(c => channel.push({ id: c.id, label: c.displayName }))
+          videoChannels.forEach(c => channel.push({ id: c.id, label: c.displayName, support: c.support }))
 
           return res()
         }
@@ -55,6 +55,15 @@ function immutableAssign <A, B> (target: A, source: B) {
   return Object.assign({}, target, source)
 }
 
+function objectToUrlEncoded (obj: any) {
+  const str: string[] = []
+  for (const key of Object.keys(obj)) {
+    str.push(encodeURIComponent(key) + '=' + encodeURIComponent(obj[key]))
+  }
+
+  return str.join('&')
+}
+
 // Thanks: https://gist.github.com/ghinda/8442a57f22099bdb2e34
 function objectToFormData (obj: any, form?: FormData, namespace?: string) {
   let fd = form || new FormData()
@@ -66,7 +75,12 @@ function objectToFormData (obj: any, form?: FormData, namespace?: string) {
 
     if (obj[key] === undefined) continue
 
-    if (typeof obj[ key ] === 'object' && !(obj[ key ] instanceof File)) {
+    if (Array.isArray(obj[key]) && obj[key].length === 0) {
+      fd.append(key, null)
+      continue
+    }
+
+    if (obj[key] !== null && typeof obj[ key ] === 'object' && !(obj[ key ] instanceof File)) {
       objectToFormData(obj[ key ], fd, key)
     } else {
       fd.append(formKey, obj[ key ])
@@ -84,7 +98,7 @@ function lineFeedToHtml (obj: object, keyToNormalize: string) {
 
 // Try to cache a little bit window.innerWidth
 let windowInnerWidth = window.innerWidth
-setInterval(() => windowInnerWidth = window.innerWidth, 500)
+// setInterval(() => windowInnerWidth = window.innerWidth, 500)
 
 function isInSmallView () {
   return windowInnerWidth < 600
@@ -95,6 +109,7 @@ function isInMobileView () {
 }
 
 export {
+  objectToUrlEncoded,
   getParameterByName,
   populateAsyncUserVideoChannels,
   getAbsoluteAPIUrl,
