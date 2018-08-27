@@ -4,6 +4,22 @@ import { logger } from '../../../helpers/logger'
 import { ActorModel } from '../../../models/activitypub/actor'
 import { ActorFollowModel } from '../../../models/activitypub/actor-follow'
 import { JobQueue } from '../../job-queue'
+import { VideoModel } from '../../../models/video/video'
+import { getActorsInvolvedInVideo } from '../audience'
+import { getServerActor } from '../../../helpers/utils'
+
+async function forwardVideoRelatedActivity (
+  activity: Activity,
+  t: Transaction,
+  followersException: ActorModel[] = [],
+  video: VideoModel
+) {
+  // Mastodon does not add our announces in audience, so we forward to them manually
+  const additionalActors = await getActorsInvolvedInVideo(video, t)
+  const additionalFollowerUrls = additionalActors.map(a => a.followersUrl)
+
+  return forwardActivity(activity, t, followersException, additionalFollowerUrls)
+}
 
 async function forwardActivity (
   activity: Activity,
@@ -11,6 +27,8 @@ async function forwardActivity (
   followersException: ActorModel[] = [],
   additionalFollowerUrls: string[] = []
 ) {
+  logger.info('Forwarding activity %s.', activity.id)
+
   const to = activity.to || []
   const cc = activity.cc || []
 
@@ -91,7 +109,8 @@ export {
   broadcastToFollowers,
   unicastTo,
   forwardActivity,
-  broadcastToActors
+  broadcastToActors,
+  forwardVideoRelatedActivity
 }
 
 // ---------------------------------------------------------------------------
@@ -100,14 +119,28 @@ async function computeFollowerUris (toActorFollower: ActorModel[], actorsExcepti
   const toActorFollowerIds = toActorFollower.map(a => a.id)
 
   const result = await ActorFollowModel.listAcceptedFollowerSharedInboxUrls(toActorFollowerIds, t)
-  const sharedInboxesException = actorsException.map(f => f.sharedInboxUrl || f.inboxUrl)
+  const sharedInboxesException = await buildSharedInboxesException(actorsException)
+
   return result.data.filter(sharedInbox => sharedInboxesException.indexOf(sharedInbox) === -1)
 }
 
 async function computeUris (toActors: ActorModel[], actorsException: ActorModel[] = []) {
-  const toActorSharedInboxesSet = new Set(toActors.map(a => a.sharedInboxUrl || a.inboxUrl))
+  const serverActor = await getServerActor()
+  const targetUrls = toActors
+    .filter(a => a.id !== serverActor.id) // Don't send to ourselves
+    .map(a => a.sharedInboxUrl || a.inboxUrl)
 
-  const sharedInboxesException = actorsException.map(f => f.sharedInboxUrl || f.inboxUrl)
+  const toActorSharedInboxesSet = new Set(targetUrls)
+
+  const sharedInboxesException = await buildSharedInboxesException(actorsException)
   return Array.from(toActorSharedInboxesSet)
               .filter(sharedInbox => sharedInboxesException.indexOf(sharedInbox) === -1)
+}
+
+async function buildSharedInboxesException (actorsException: ActorModel[]) {
+  const serverActor = await getServerActor()
+
+  return actorsException
+    .map(f => f.sharedInboxUrl || f.inboxUrl)
+    .concat([ serverActor.sharedInboxUrl ])
 }

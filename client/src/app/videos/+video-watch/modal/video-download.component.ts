@@ -1,6 +1,6 @@
-import { Component, Input, OnInit, ViewChild } from '@angular/core'
-import { ModalDirective } from 'ngx-bootstrap/modal'
+import { Component, ElementRef, Input, OnInit, ViewChild } from '@angular/core'
 import { VideoDetails } from '../../../shared/video/video-details.model'
+import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 
 @Component({
   selector: 'my-video-download',
@@ -10,12 +10,12 @@ import { VideoDetails } from '../../../shared/video/video-details.model'
 export class VideoDownloadComponent implements OnInit {
   @Input() video: VideoDetails = null
 
-  @ViewChild('modal') modal: ModalDirective
+  @ViewChild('modal') modal: ElementRef
 
-  downloadType: 'direct' | 'torrent' = 'torrent'
+  downloadType: 'direct' | 'torrent' | 'magnet' = 'torrent'
   resolutionId: number | string = -1
 
-  constructor () {
+  constructor (private modalService: NgbModal) {
     // empty
   }
 
@@ -24,11 +24,7 @@ export class VideoDownloadComponent implements OnInit {
   }
 
   show () {
-    this.modal.show()
-  }
-
-  hide () {
-    this.modal.hide()
+    this.modalService.open(this.modal)
   }
 
   download () {
@@ -41,7 +37,19 @@ export class VideoDownloadComponent implements OnInit {
       return
     }
 
-    const link = this.downloadType === 'direct' ? file.fileUrl : file.torrentUrl
-    window.open(link)
+    const link = (() => {
+      switch (this.downloadType) {
+        case 'direct': {
+          return file.fileDownloadUrl
+        }
+        case 'torrent': {
+          return file.torrentDownloadUrl
+        }
+        case 'magnet': {
+          return file.magnetUri
+        }
+      }
+    })()
+    window.location.assign(link)
   }
 }

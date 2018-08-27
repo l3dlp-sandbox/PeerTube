@@ -19,7 +19,7 @@
 
 ```
 $ sudo apt update
-$ sudo apt install nginx ffmpeg postgresql openssl g++ make redis-server git
+$ sudo apt install nginx ffmpeg postgresql postgresql-contrib openssl g++ make redis-server git
 $ ffmpeg -version # Should be >= 3.x
 $ g++ -v # Should be >= 5.x
 ```
@@ -36,7 +36,7 @@ $ sudo apt install ffmpeg
   1. Run:
 
 ```
-$ sudo pacman -S nodejs-lts-carbon yarn ffmpeg postgresql openssl redis git wget unzip python2 base-devel npm nginx
+$ sudo pacman -S nodejs yarn ffmpeg postgresql openssl redis git wget unzip python2 base-devel npm nginx
 ```
 
 ## CentOS 7
@@ -54,12 +54,18 @@ $ sudo pacman -S nodejs-lts-carbon yarn ffmpeg postgresql openssl redis git wget
 $ sudo yum update
 $ sudo yum install epel-release centos-release-scl
 $ sudo yum update
-$ sudo yum install nginx postgresql postgresql-server openssl gcc-c++ make redis git devtoolset-6
+$ sudo yum install nginx postgresql postgresql-server postgresql-contrib openssl gcc-c++ make redis git devtoolset-7
 ```
 
-  5. You need to use a more up to date version of G++ in order to run the yarn install command, hence the installation of devtoolset-6.
+  5. You need to use a more up to date version of G++ in order to run the yarn install command, hence the installation of devtoolset-7.
 ```
-$ sudo scl devtoolset-6 bash
+$ sudo scl enable devtoolset-7 bash
+```
+
+Later when you invoke any node command, please prefix them with `CC=/opt/rh/devtoolset-7/root/usr/bin/gcc CXX=/opt/rh/devtoolset-7/root/usr/bin/g++`, such as with:
+
+```
+$ sudo -H -u peertube CC=/opt/rh/devtoolset-7/root/usr/bin/gcc CXX=/opt/rh/devtoolset-7/root/usr/bin/g++ yarn install --production --pure-lockfile
 ```
 
 ## FreeBSD
@@ -70,7 +76,7 @@ On a fresh install of [FreeBSD](https://www.freebsd.org), new system or new jail
 ```
 # pkg
 # pkg update
-# pkg install -y sudo bash wget git python nginx pkgconf vips postgresql96-server redis openssl node npm yarn ffmpeg unzip
+# pkg install -y sudo bash wget git python nginx pkgconf vips postgresql96-server postgresql96-contrib redis openssl node npm yarn ffmpeg unzip
 ```
 
   2. Allow users in the wheel group (hope you don't forgot to add your user on wheel group!) to use sudo
@@ -84,15 +90,11 @@ On a fresh install of [FreeBSD](https://www.freebsd.org), new system or new jail
 ```
 
   3. Enable nginx, redis, postgresql services and initialize database
-```
-# ee /etc/rc.conf
-```
 
-     Add the following lines
 ```
-postgresql_enable="YES"
-redis_enable="YES"
-nginx_enable="YES"
+# sysrc postgresql_enable="YES"
+# sysrc redis_enable="YES"
+# sysrc nginx_enable="YES"
 ```
 
 	 Initialize database and start services
@@ -115,6 +117,44 @@ nginx_enable="YES"
    brew services run postgresql
    brew services run redis
    ```
+
+## Gentoo
+
+* Add this to ``/etc/portage/sets/peertube``:
+```
+net-libs/nodejs
+sys-apps/yarn
+media-video/ffmpeg[x264] # Optionnally add vorbis,vpx
+dev-db/postgresql
+dev-db/redis
+dev-vcs/git
+app-arch/unzip
+dev-lang/python:2.7
+www-servers/nginx
+media-libs/vips[jpeg,png,exif]
+
+# Optionnal, client for Let’s Encrypt:
+# app-crypt/certbot
+# app-crypt/certbot-nginx
+```
+
+* Compile the peertube set:
+```
+emerge -a @peertube
+```
+
+* Initialize the PostgreSQL database if you just merged it:
+```
+emerge --config postgresql
+```
+
+* (For OpenRC) Enable and then start the services (replace with the correct PostgreSQL slot):
+```
+rc-update add redis
+rc-update add postgresql-10
+rc-service redis start
+rc-service postgresql-10 start
+```
    
 ## Other distributions
 

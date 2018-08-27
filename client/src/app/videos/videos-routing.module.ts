@@ -2,10 +2,10 @@ import { NgModule } from '@angular/core'
 import { RouterModule, Routes } from '@angular/router'
 import { VideoLocalComponent } from '@app/videos/video-list/video-local.component'
 import { MetaGuard } from '@ngx-meta/core'
-import { VideoSearchComponent } from './video-list'
 import { VideoRecentlyAddedComponent } from './video-list/video-recently-added.component'
 import { VideoTrendingComponent } from './video-list/video-trending.component'
 import { VideosComponent } from './videos.component'
+import { VideoUserSubscriptionsComponent } from '@app/videos/video-list/video-user-subscriptions.component'
 
 const videosRoutes: Routes = [
   {
@@ -13,11 +13,6 @@ const videosRoutes: Routes = [
     component: VideosComponent,
     canActivateChild: [ MetaGuard ],
     children: [
-      {
-        path: 'list',
-        pathMatch: 'full',
-        redirectTo: 'recently-added'
-      },
       {
         path: 'trending',
         component: VideoTrendingComponent,
@@ -37,20 +32,20 @@ const videosRoutes: Routes = [
         }
       },
       {
+        path: 'subscriptions',
+        component: VideoUserSubscriptionsComponent,
+        data: {
+          meta: {
+            title: 'Subscriptions'
+          }
+        }
+      },
+      {
         path: 'local',
         component: VideoLocalComponent,
         data: {
           meta: {
             title: 'Local videos'
-          }
-        }
-      },
-      {
-        path: 'search',
-        component: VideoSearchComponent,
-        data: {
-          meta: {
-            title: 'Search videos'
           }
         }
       },
@@ -73,8 +68,7 @@ const videosRoutes: Routes = [
         }
       },
       {
-        path: ':uuid',
-        pathMatch: 'full',
+        path: 'watch/:uuid/comments/:commentId',
         redirectTo: 'watch/:uuid'
       },
       {

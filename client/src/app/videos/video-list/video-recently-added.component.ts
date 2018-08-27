@@ -7,6 +7,8 @@ import { AuthService } from '../../core/auth'
 import { AbstractVideoList } from '../../shared/video/abstract-video-list'
 import { VideoSortField } from '../../shared/video/sort-field.type'
 import { VideoService } from '../../shared/video/video.service'
+import { I18n } from '@ngx-translate/i18n-polyfill'
+import { ScreenService } from '@app/shared/misc/screen.service'
 
 @Component({
   selector: 'my-videos-recently-added',
@@ -14,17 +16,23 @@ import { VideoService } from '../../shared/video/video.service'
   templateUrl: '../../shared/video/abstract-video-list.html'
 })
 export class VideoRecentlyAddedComponent extends AbstractVideoList implements OnInit, OnDestroy {
-  titlePage = 'Recently added'
+  titlePage: string
   currentRoute = '/videos/recently-added'
   sort: VideoSortField = '-publishedAt'
 
-  constructor (protected router: Router,
-               protected route: ActivatedRoute,
-               protected location: Location,
-               protected notificationsService: NotificationsService,
-               protected authService: AuthService,
-               private videoService: VideoService) {
+  constructor (
+    protected router: Router,
+    protected route: ActivatedRoute,
+    protected location: Location,
+    protected notificationsService: NotificationsService,
+    protected authService: AuthService,
+    protected i18n: I18n,
+    protected screenService: ScreenService,
+    private videoService: VideoService
+  ) {
     super()
+
+    this.titlePage = i18n('Recently added')
   }
 
   ngOnInit () {
@@ -40,10 +48,10 @@ export class VideoRecentlyAddedComponent extends AbstractVideoList implements On
   getVideosObservable (page: number) {
     const newPagination = immutableAssign(this.pagination, { currentPage: page })
 
-    return this.videoService.getVideos(newPagination, this.sort)
+    return this.videoService.getVideos(newPagination, this.sort, undefined, this.categoryOneOf)
   }
 
   generateSyndicationList () {
-    this.syndicationItems = this.videoService.getVideoFeedUrls(this.sort)
+    this.syndicationItems = this.videoService.getVideoFeedUrls(this.sort, undefined, this.categoryOneOf)
   }
 }

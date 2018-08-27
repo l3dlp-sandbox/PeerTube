@@ -1,7 +1,6 @@
-import * as kue from 'kue'
+import * as Bull from 'bull'
 import { logger } from '../../../helpers/logger'
-import { getServerActor } from '../../../helpers/utils'
-import { REMOTE_SCHEME, sequelizeTypescript, SERVER_ACTOR_NAME } from '../../../initializers'
+import { CONFIG, REMOTE_SCHEME, sequelizeTypescript } from '../../../initializers'
 import { sendFollow } from '../../activitypub/send'
 import { sanitizeHost } from '../../../helpers/core-utils'
 import { loadActorUrlOrGetFromWebfinger } from '../../../helpers/webfinger'
@@ -11,27 +10,29 @@ import { ActorFollowModel } from '../../../models/activitypub/actor-follow'
 import { ActorModel } from '../../../models/activitypub/actor'
 
 export type ActivitypubFollowPayload = {
+  followerActorId: number
+  name: string
   host: string
 }
 
-async function processActivityPubFollow (job: kue.Job) {
+async function processActivityPubFollow (job: Bull.Job) {
   const payload = job.data as ActivitypubFollowPayload
   const host = payload.host
 
   logger.info('Processing ActivityPub follow in job %d.', job.id)
 
-  const sanitizedHost = sanitizeHost(host, REMOTE_SCHEME.HTTP)
-
-  const actorUrl = await loadActorUrlOrGetFromWebfinger(SERVER_ACTOR_NAME, sanitizedHost)
-  const targetActor = await getOrCreateActorAndServerAndModel(actorUrl)
-
-  const fromActor = await getServerActor()
-  const options = {
-    arguments: [ fromActor, targetActor ],
-    errorMessage: 'Cannot follow with many retries.'
+  let targetActor: ActorModel
+  if (!host || host === CONFIG.WEBSERVER.HOST) {
+    targetActor = await ActorModel.loadLocalByName(payload.name)
+  } else {
+    const sanitizedHost = sanitizeHost(host, REMOTE_SCHEME.HTTP)
+    const actorUrl = await loadActorUrlOrGetFromWebfinger(payload.name + '@' + sanitizedHost)
+    targetActor = await getOrCreateActorAndServerAndModel(actorUrl)
   }
 
-  return retryTransactionWrapper(follow, options)
+  const fromActor = await ActorModel.load(payload.followerActorId)
+
+  return retryTransactionWrapper(follow, fromActor, targetActor)
 }
 // ---------------------------------------------------------------------------
 
@@ -46,6 +47,9 @@ function follow (fromActor: ActorModel, targetActor: ActorModel) {
     throw new Error('Follower is the same than target actor.')
   }
 
+  // Same server, direct accept
+  const state = !fromActor.serverId && !targetActor.serverId ? 'accepted' : 'pending'
+
   return sequelizeTypescript.transaction(async t => {
     const [ actorFollow ] = await ActorFollowModel.findOrCreate({
       where: {
@@ -53,7 +57,7 @@ function follow (fromActor: ActorModel, targetActor: ActorModel) {
         targetActorId: targetActor.id
       },
       defaults: {
-        state: 'pending',
+        state,
         actorId: fromActor.id,
         targetActorId: targetActor.id
       },
@@ -62,7 +66,7 @@ function follow (fromActor: ActorModel, targetActor: ActorModel) {
     actorFollow.ActorFollowing = targetActor
     actorFollow.ActorFollower = fromActor
 
-    // Send a notification to remote server
-    await sendFollow(actorFollow)
+    // Send a notification to remote server if our follow is not already accepted
+    if (actorFollow.state !== 'accepted') await sendFollow(actorFollow)
   })
 }

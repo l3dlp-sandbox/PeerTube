@@ -2,7 +2,7 @@ listen:
   hostname: 'localhost'
   port: 9000
 
-# Correspond to your reverse proxy "listen" configuration
+# Correspond to your reverse proxy server_name/listen configuration
 webserver:
   https: true
   hostname: 'example.com'
@@ -21,8 +21,12 @@ database:
   suffix: '_prod'
   username: 'peertube'
   password: 'peertube'
+  pool:
+    max: 5
 
 # Redis server for short time storage
+# You can also specify a 'socket' path to a unix socket but first need to
+# comment out hostname and port
 redis:
   hostname: 'localhost'
   port: 6379
@@ -32,10 +36,10 @@ redis:
 # SMTP server to send emails
 smtp:
   hostname: null
-  port: 465
+  port: 465 # If you use StartTLS: 587
   username: null
   password: null
-  tls: true
+  tls: true # If you use StartTLS: false
   disable_starttls: false
   ca_file: null # Used for self signed certificates
   from_address: 'admin@example.com'
@@ -48,11 +52,16 @@ storage:
   previews: '/var/www/peertube/storage/previews/'
   thumbnails: '/var/www/peertube/storage/thumbnails/'
   torrents: '/var/www/peertube/storage/torrents/'
+  captions: '/var/www/peertube/storage/captions/'
   cache: '/var/www/peertube/storage/cache/'
 
 log:
   level: 'info' # debug/info/warning/error
 
+search:
+  remote_uri: # Add ability to search remote videos/actors by URI, that may not be federated with your instance
+    users: true
+    anonymous: false
 
 ###############################################################################
 #
@@ -68,7 +77,9 @@ log:
 
 cache:
   previews:
-    size: 100 # Max number of previews you want to cache
+    size: 500 # Max number of previews you want to cache
+  captions:
+    size: 500 # Max number of video captions/subtitles you want to cache
 
 admin:
   email: 'admin@example.com'
@@ -76,7 +87,7 @@ admin:
 signup:
   enabled: false
   limit: 10 # When the limit is reached, registrations are disabled. -1 == unlimited
-  filters: 
+  filters:
     cidr: # You can specify CIDR ranges to whitelist (empty = no filtering) or blacklist
       whitelist: []
       blacklist: []
@@ -87,16 +98,25 @@ user:
   video_quota: -1
 
 # If enabled, the video will be transcoded to mp4 (x264) with "faststart" flag
-# Uses a lot of CPU!
+# In addition, if some resolutions are enabled the mp4 video file will be transcoded to these new resolutions.
+# Please, do not disable transcoding since many uploaded videos will not work
 transcoding:
   enabled: true
   threads: 1
-  resolutions: # Only created if the original video has a higher resolution
+  resolutions: # Only created if the original video has a higher resolution, uses more storage!
     240p: false
     360p: false
     480p: false
     720p: false
     1080p: false
+
+import:
+  # Add ability for your users to import remote videos (from YouTube, torrent...)
+  videos:
+    http: # Classic HTTP or all sites supported by youtube-dl https://rg3.github.io/youtube-dl/supportedsites.html
+      enabled: false
+    torrent: # Magnet URI or torrent file (use classic TCP/UDP/WebSeed to download the file)
+      enabled: false
 
 # Instance settings
 instance:
@@ -119,7 +139,7 @@ instance:
 services:
   # Cards configuration to format video in Twitter
   twitter:
-    username: '@Chocobozzz' # The Twitter @username the card should be attributed to
+    username: '@Chocobozzz' # Indicates the Twitter account for the website or platform on which the content was published
     # If true, a video player will be embedded in the Twitter feed on PeerTube video share
     # If false, we use an image link card that will redirect on your PeerTube instance
     # Test on https://cards-dev.twitter.com/validator to see if you are whitelisted

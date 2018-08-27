@@ -7,6 +7,7 @@ import { JobState } from '../../../../../../shared/models'
 import { RestPagination, RestTable } from '../../../shared'
 import { RestExtractor } from '../../../shared/rest/rest-extractor.service'
 import { JobService } from '../shared'
+import { I18n } from '@ngx-translate/i18n-polyfill'
 
 @Component({
   selector: 'my-jobs-list',
@@ -16,8 +17,8 @@ import { JobService } from '../shared'
 export class JobsListComponent extends RestTable implements OnInit {
   private static JOB_STATE_LOCAL_STORAGE_STATE = 'jobs-list-state'
 
-  jobState: JobState = 'inactive'
-  jobStates: JobState[] = [ 'active', 'complete', 'failed', 'inactive', 'delayed' ]
+  jobState: JobState = 'waiting'
+  jobStates: JobState[] = [ 'active', 'completed', 'failed', 'waiting', 'delayed' ]
   jobs: Job[] = []
   totalRecords: number
   rowsPerPage = 10
@@ -27,7 +28,8 @@ export class JobsListComponent extends RestTable implements OnInit {
   constructor (
     private notificationsService: NotificationsService,
     private restExtractor: RestExtractor,
-    private jobsService: JobService
+    private jobsService: JobService,
+    private i18n: I18n
   ) {
     super()
   }
@@ -38,6 +40,8 @@ export class JobsListComponent extends RestTable implements OnInit {
   }
 
   onJobStateChanged () {
+    this.pagination.start = 0
+
     this.loadData()
     this.saveJobState()
   }
@@ -51,7 +55,7 @@ export class JobsListComponent extends RestTable implements OnInit {
           this.totalRecords = resultList.total
         },
 
-        err => this.notificationsService.error('Error', err.message)
+        err => this.notificationsService.error(this.i18n('Error'), err.message)
       )
   }
 

@@ -7,7 +7,7 @@ import { extname, join } from 'path'
 import * as request from 'supertest'
 import {
   buildAbsoluteFixturePath,
-  getMyUserInformation,
+  getMyUserInformation, immutableAssign,
   makeGetRequest,
   makePutBodyRequest,
   makeUploadRequest,
@@ -27,6 +27,7 @@ type VideoAttributes = {
   language?: string
   nsfw?: boolean
   commentsEnabled?: boolean
+  waitTranscoding?: boolean
   description?: string
   tags?: string[]
   channelId?: number
@@ -34,6 +35,10 @@ type VideoAttributes = {
   fixture?: string
   thumbnailfile?: string
   previewfile?: string
+  scheduleUpdate?: {
+    updateAt: string
+    privacy?: VideoPrivacy
+  }
 }
 
 function getVideoCategories (url: string) {
@@ -128,13 +133,13 @@ function getVideosList (url: string) {
           .expect('Content-Type', /json/)
 }
 
-function getVideosListWithToken (url: string, token: string) {
+function getVideosListWithToken (url: string, token: string, query: { nsfw?: boolean } = {}) {
   const path = '/api/v1/videos'
 
   return request(url)
     .get(path)
     .set('Authorization', 'Bearer ' + token)
-    .query({ sort: 'name' })
+    .query(immutableAssign(query, { sort: 'name' }))
     .set('Accept', 'application/json')
     .expect(200)
     .expect('Content-Type', /json/)
@@ -167,17 +172,25 @@ function getMyVideos (url: string, accessToken: string, start: number, count: nu
     .expect('Content-Type', /json/)
 }
 
-function getAccountVideos (url: string, accessToken: string, accountName: string, start: number, count: number, sort?: string) {
+function getAccountVideos (
+  url: string,
+  accessToken: string,
+  accountName: string,
+  start: number,
+  count: number,
+  sort?: string,
+  query: { nsfw?: boolean } = {}
+) {
   const path = '/api/v1/accounts/' + accountName + '/videos'
 
   return makeGetRequest({
     url,
     path,
-    query: {
+    query: immutableAssign(query, {
       start,
       count,
       sort
-    },
+    }),
     token: accessToken,
     statusCodeExpected: 200
   })
@@ -186,21 +199,22 @@ function getAccountVideos (url: string, accessToken: string, accountName: string
 function getVideoChannelVideos (
   url: string,
   accessToken: string,
-  videoChannelId: number | string,
+  videoChannelName: string,
   start: number,
   count: number,
-  sort?: string
+  sort?: string,
+  query: { nsfw?: boolean } = {}
 ) {
-  const path = '/api/v1/video-channels/' + videoChannelId + '/videos'
+  const path = '/api/v1/video-channels/' + videoChannelName + '/videos'
 
   return makeGetRequest({
     url,
     path,
-    query: {
+    query: immutableAssign(query, {
       start,
       count,
       sort
-    },
+    }),
     token: accessToken,
     statusCodeExpected: 200
   })
@@ -232,6 +246,17 @@ function getVideosListSort (url: string, sort: string) {
           .expect('Content-Type', /json/)
 }
 
+function getVideosWithFilters (url: string, query: { tagsAllOf: string[], categoryOneOf: number[] | number }) {
+  const path = '/api/v1/videos'
+
+  return request(url)
+    .get(path)
+    .query(query)
+    .set('Accept', 'application/json')
+    .expect(200)
+    .expect('Content-Type', /json/)
+}
+
 function removeVideo (url: string, token: string, id: number | string, expectedStatus = 204) {
   const path = '/api/v1/videos'
 
@@ -242,61 +267,10 @@ function removeVideo (url: string, token: string, id: number | string, expectedS
           .expect(expectedStatus)
 }
 
-function searchVideo (url: string, search: string) {
-  const path = '/api/v1/videos'
-  const req = request(url)
-    .get(path + '/search')
-    .query({ search })
-    .set('Accept', 'application/json')
-
-  return req.expect(200)
-    .expect('Content-Type', /json/)
-}
-
-function searchVideoWithToken (url: string, search: string, token: string) {
-  const path = '/api/v1/videos'
-  const req = request(url)
-    .get(path + '/search')
-    .set('Authorization', 'Bearer ' + token)
-    .query({ search })
-    .set('Accept', 'application/json')
-
-  return req.expect(200)
-            .expect('Content-Type', /json/)
-}
-
-function searchVideoWithPagination (url: string, search: string, start: number, count: number, sort?: string) {
-  const path = '/api/v1/videos'
-
-  const req = request(url)
-                .get(path + '/search')
-                .query({ start })
-                .query({ search })
-                .query({ count })
-
-  if (sort) req.query({ sort })
-
-  return req.set('Accept', 'application/json')
-            .expect(200)
-            .expect('Content-Type', /json/)
-}
-
-function searchVideoWithSort (url: string, search: string, sort: string) {
-  const path = '/api/v1/videos'
-
-  return request(url)
-          .get(path + '/search')
-          .query({ search })
-          .query({ sort })
-          .set('Accept', 'application/json')
-          .expect(200)
-          .expect('Content-Type', /json/)
-}
-
 async function checkVideoFilesWereRemoved (videoUUID: string, serverNumber: number) {
   const testDirectory = 'test' + serverNumber
 
-  for (const directory of [ 'videos', 'thumbnails', 'torrents', 'previews' ]) {
+  for (const directory of [ 'videos', 'thumbnails', 'torrents', 'previews', 'captions' ]) {
     const directoryPath = join(root(), testDirectory, directory)
 
     const directoryExists = existsSync(directoryPath)
@@ -326,6 +300,7 @@ async function uploadVideo (url: string, accessToken: string, videoAttributesArg
     language: 'zh',
     channelId: defaultChannelId,
     nsfw: true,
+    waitTranscoding: false,
     description: 'my super description',
     support: 'my super support text',
     tags: [ 'tag' ],
@@ -341,6 +316,7 @@ async function uploadVideo (url: string, accessToken: string, videoAttributesArg
               .field('name', attributes.name)
               .field('nsfw', JSON.stringify(attributes.nsfw))
               .field('commentsEnabled', JSON.stringify(attributes.commentsEnabled))
+              .field('waitTranscoding', JSON.stringify(attributes.waitTranscoding))
               .field('privacy', attributes.privacy.toString())
               .field('channelId', attributes.channelId)
 
@@ -368,6 +344,14 @@ async function uploadVideo (url: string, accessToken: string, videoAttributesArg
     req.attach('previewfile', buildAbsoluteFixturePath(attributes.previewfile))
   }
 
+  if (attributes.scheduleUpdate) {
+    req.field('scheduleUpdate[updateAt]', attributes.scheduleUpdate.updateAt)
+
+    if (attributes.scheduleUpdate.privacy) {
+      req.field('scheduleUpdate[privacy]', attributes.scheduleUpdate.privacy)
+    }
+  }
+
   return req.attach('videofile', buildAbsoluteFixturePath(attributes.fixture))
             .expect(specialStatus)
 }
@@ -386,6 +370,7 @@ function updateVideo (url: string, accessToken: string, id: number | string, att
   if (attributes.tags) body['tags'] = attributes.tags
   if (attributes.privacy) body['privacy'] = attributes.privacy
   if (attributes.channelId) body['channelId'] = attributes.channelId
+  if (attributes.scheduleUpdate) body['scheduleUpdate'] = attributes.scheduleUpdate
 
   // Upload request
   if (attributes.thumbnailfile || attributes.previewfile) {
@@ -447,23 +432,25 @@ async function completeVideoCheck (
     nsfw: boolean
     commentsEnabled: boolean
     description: string
+    publishedAt?: string
     support: string
     account: {
       name: string
       host: string
     }
-    isLocal: boolean,
-    tags: string[],
-    privacy: number,
-    likes?: number,
-    dislikes?: number,
-    duration: number,
+    isLocal: boolean
+    tags: string[]
+    privacy: number
+    likes?: number
+    dislikes?: number
+    duration: number
     channel: {
-      name: string,
+      displayName: string
+      name: string
       description
       isLocal: boolean
     }
-    fixture: string,
+    fixture: string
     files: {
       resolution: number
       size: number
@@ -490,8 +477,8 @@ async function completeVideoCheck (
   expect(video.account.uuid).to.be.a('string')
   expect(video.account.host).to.equal(attributes.account.host)
   expect(video.account.name).to.equal(attributes.account.name)
-  expect(video.channel.displayName).to.equal(attributes.channel.name)
-  expect(video.channel.name).to.have.lengthOf(36)
+  expect(video.channel.displayName).to.equal(attributes.channel.displayName)
+  expect(video.channel.name).to.equal(attributes.channel.name)
   expect(video.likes).to.equal(attributes.likes)
   expect(video.dislikes).to.equal(attributes.dislikes)
   expect(video.isLocal).to.equal(attributes.isLocal)
@@ -500,6 +487,10 @@ async function completeVideoCheck (
   expect(dateIsValid(video.publishedAt)).to.be.true
   expect(dateIsValid(video.updatedAt)).to.be.true
 
+  if (attributes.publishedAt) {
+    expect(video.publishedAt).to.equal(attributes.publishedAt)
+  }
+
   const res = await getVideo(url, video.uuid)
   const videoDetails: VideoDetails = res.body
 
@@ -507,8 +498,8 @@ async function completeVideoCheck (
   expect(videoDetails.tags).to.deep.equal(attributes.tags)
   expect(videoDetails.account.name).to.equal(attributes.account.name)
   expect(videoDetails.account.host).to.equal(attributes.account.host)
-  expect(videoDetails.channel.displayName).to.equal(attributes.channel.name)
-  expect(videoDetails.channel.name).to.have.lengthOf(36)
+  expect(video.channel.displayName).to.equal(attributes.channel.displayName)
+  expect(video.channel.name).to.equal(attributes.channel.name)
   expect(videoDetails.channel.host).to.equal(attributes.account.host)
   expect(videoDetails.channel.isLocal).to.equal(attributes.channel.isLocal)
   expect(dateIsValid(videoDetails.channel.createdAt.toString())).to.be.true
@@ -532,7 +523,9 @@ async function completeVideoCheck (
 
     const minSize = attributeFile.size - ((10 * attributeFile.size) / 100)
     const maxSize = attributeFile.size + ((10 * attributeFile.size) / 100)
-    expect(file.size).to.be.above(minSize).and.below(maxSize)
+    expect(file.size,
+           'File size for resolution ' + file.resolution.label + ' outside confidence interval (' + minSize + '> size <' + maxSize + ')')
+      .to.be.above(minSize).and.below(maxSize)
 
     {
       await testImage(url, attributes.thumbnailfile || attributes.fixture, videoDetails.thumbnailPath)
@@ -560,18 +553,15 @@ export {
   getMyVideos,
   getAccountVideos,
   getVideoChannelVideos,
-  searchVideoWithToken,
   getVideo,
   getVideoWithToken,
   getVideosList,
   getVideosListPagination,
   getVideosListSort,
   removeVideo,
-  searchVideo,
-  searchVideoWithPagination,
-  searchVideoWithSort,
   getVideosListWithToken,
   uploadVideo,
+  getVideosWithFilters,
   updateVideo,
   rateVideo,
   viewVideo,

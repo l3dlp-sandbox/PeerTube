@@ -5,10 +5,13 @@ import 'mocha'
 import { Video, VideoPrivacy } from '../../../../shared/models/videos'
 import { VideoComment, VideoCommentThreadTree } from '../../../../shared/models/videos/video-comment.model'
 import { completeVideoCheck } from '../../utils'
-
 import {
-  flushAndRunMultipleServers, flushTests, getVideosList, killallServers, ServerInfo, setAccessTokensToServers, uploadVideo,
-  wait
+  flushAndRunMultipleServers,
+  getVideosList,
+  killallServers,
+  ServerInfo,
+  setAccessTokensToServers,
+  uploadVideo
 } from '../../utils/index'
 import { dateIsValid } from '../../utils/miscs/miscs'
 import { follow, getFollowersListPaginationAndSort, getFollowingListPaginationAndSort, unfollow } from '../../utils/server/follows'
@@ -16,10 +19,15 @@ import { expectAccountFollows } from '../../utils/users/accounts'
 import { userLogin } from '../../utils/users/login'
 import { createUser } from '../../utils/users/users'
 import {
-  addVideoCommentReply, addVideoCommentThread, getVideoCommentThreads,
+  addVideoCommentReply,
+  addVideoCommentThread,
+  getVideoCommentThreads,
   getVideoThreadComments
 } from '../../utils/videos/video-comments'
 import { rateVideo } from '../../utils/videos/videos'
+import { waitJobs } from '../../utils/server/jobs'
+import { createVideoCaption, listVideoCaptions, testCaptionFile } from '../../utils/videos/video-captions'
+import { VideoCaption } from '../../../../shared/models/videos/caption/video-caption.model'
 
 const expect = chai.expect
 
@@ -58,11 +66,11 @@ describe('Test follows', function () {
   })
 
   it('Should have server 1 following server 2 and 3', async function () {
-    this.timeout(10000)
+    this.timeout(30000)
 
     await follow(servers[0].url, [ servers[1].url, servers[2].url ], servers[0].accessToken)
 
-    await wait(7000)
+    await waitJobs(servers)
   })
 
   it('Should have 2 followings on server 1', async function () {
@@ -135,7 +143,7 @@ describe('Test follows', function () {
 
     await unfollow(servers[0].url, servers[0].accessToken, servers[2])
 
-    await wait(3000)
+    await waitJobs(servers)
   })
 
   it('Should not follow server 3 on server 1 anymore', async function () {
@@ -170,12 +178,12 @@ describe('Test follows', function () {
   })
 
   it('Should upload a video on server 2 and 3 and propagate only the video of server 2', async function () {
-    this.timeout(10000)
+    this.timeout(35000)
 
     await uploadVideo(servers[1].url, servers[1].accessToken, { name: 'server2' })
     await uploadVideo(servers[2].url, servers[2].accessToken, { name: 'server3' })
 
-    await wait(5000)
+    await waitJobs(servers)
 
     let res = await getVideosList(servers[0].url)
     expect(res.body.total).to.equal(1)
@@ -238,14 +246,24 @@ describe('Test follows', function () {
           const text3 = 'my second answer to thread 1'
           await addVideoCommentReply(servers[ 2 ].url, servers[ 2 ].accessToken, video4.id, threadId, text3)
         }
+
+        {
+          await createVideoCaption({
+            url: servers[2].url,
+            accessToken: servers[2].accessToken,
+            language: 'ar',
+            videoId: video4.id,
+            fixture: 'subtitle-good2.vtt'
+          })
+        }
       }
 
-      await wait(5000)
+      await waitJobs(servers)
 
       // Server 1 follows server 3
       await follow(servers[ 0 ].url, [ servers[ 2 ].url ], servers[ 0 ].accessToken)
 
-      await wait(7000)
+      await waitJobs(servers)
     })
 
     it('Should have the correct follows counts 3', async function () {
@@ -260,7 +278,7 @@ describe('Test follows', function () {
       await expectAccountFollows(servers[2].url, 'peertube@localhost:9003', 1, 0)
     })
 
-    it('Should propagate videos', async function () {
+    it('Should have propagated videos', async function () {
       const res = await getVideosList(servers[ 0 ].url)
       expect(res.body.total).to.equal(7)
 
@@ -293,7 +311,8 @@ describe('Test follows', function () {
         likes: 1,
         dislikes: 1,
         channel: {
-          name: 'Default root channel',
+          displayName: 'Main root channel',
+          name: 'root_channel',
           description: '',
           isLocal
         },
@@ -308,7 +327,7 @@ describe('Test follows', function () {
       await completeVideoCheck(servers[ 0 ].url, video4, checkAttributes)
     })
 
-    it('Should propagate comments', async function () {
+    it('Should have propagated comments', async function () {
       const res1 = await getVideoCommentThreads(servers[0].url, video4.id, 0, 5)
 
       expect(res1.body.total).to.equal(1)
@@ -347,12 +366,24 @@ describe('Test follows', function () {
       expect(secondChild.children).to.have.lengthOf(0)
     })
 
+    it('Should have propagated captions', async function () {
+      const res = await listVideoCaptions(servers[0].url, video4.id)
+      expect(res.body.total).to.equal(1)
+      expect(res.body.data).to.have.lengthOf(1)
+
+      const caption1: VideoCaption = res.body.data[0]
+      expect(caption1.language.id).to.equal('ar')
+      expect(caption1.language.label).to.equal('Arabic')
+      expect(caption1.captionPath).to.equal('/static/video-captions/' + video4.uuid + '-ar.vtt')
+      await testCaptionFile(servers[0].url, caption1.captionPath, 'Subtitle good 2.')
+    })
+
     it('Should unfollow server 3 on server 1 and does not list server 3 videos', async function () {
       this.timeout(5000)
 
       await unfollow(servers[0].url, servers[0].accessToken, servers[2])
 
-      await wait(3000)
+      await waitJobs(servers)
 
       let res = await getVideosList(servers[ 0 ].url)
       expect(res.body.total).to.equal(1)
@@ -362,10 +393,5 @@ describe('Test follows', function () {
 
   after(async function () {
     killallServers(servers)
-
-    // Keep the logs if the test failed
-    if (this['ok']) {
-      await flushTests()
-    }
   })
 })

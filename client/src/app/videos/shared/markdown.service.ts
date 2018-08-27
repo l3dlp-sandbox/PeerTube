@@ -23,14 +23,16 @@ export class MarkdownService {
   }
 
   textMarkdownToHTML (markdown: string) {
-    const html = this.textMarkdownIt.render(markdown)
+    if (!markdown) return ''
 
+    const html = this.textMarkdownIt.render(markdown)
     return this.avoidTruncatedLinks(html)
   }
 
   enhancedMarkdownToHTML (markdown: string) {
-    const html = this.enhancedMarkdownIt.render(markdown)
+    if (!markdown) return ''
 
+    const html = this.enhancedMarkdownIt.render(markdown)
     return this.avoidTruncatedLinks(html)
   }
 
@@ -68,7 +70,8 @@ export class MarkdownService {
     }
   }
 
-  private avoidTruncatedLinks (html) {
-    return html.replace(/<a[^>]+>([^<]+)<\/a>\s*...(<\/p>)?$/mi, '$1...')
+  private avoidTruncatedLinks (html: string) {
+    return html.replace(/<a[^>]+>([^<]+)<\/a>\s*...((<\/p>)|(<\/li>)|(<\/strong>))?$/mi, '$1...')
+      .replace(/\[[^\]]+\]?\(?([^\)]+)$/, '$1')
   }
 }

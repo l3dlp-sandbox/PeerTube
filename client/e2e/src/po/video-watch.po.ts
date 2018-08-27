@@ -41,7 +41,7 @@ export class VideoWatchPage {
       .then(seconds => parseInt(seconds, 10))
   }
 
-  async pauseVideo (isAutoplay: boolean) {
+  async pauseVideo (isAutoplay: boolean, isMobileDevice: boolean) {
     if (isAutoplay === false) {
       const playButton = element(by.css('.vjs-big-play-button'))
       await browser.wait(browser.ExpectedConditions.elementToBeClickable(playButton))
@@ -53,6 +53,12 @@ export class VideoWatchPage {
 
     const videojsEl = element(by.css('div.video-js'))
     await browser.wait(browser.ExpectedConditions.elementToBeClickable(videojsEl))
+
+    // On Android, we need to click twice on "play" (BrowserStack particularity)
+    if (isMobileDevice) {
+      await browser.sleep(3000)
+      await videojsEl.click()
+    }
 
     await browser.sleep(7000)
 

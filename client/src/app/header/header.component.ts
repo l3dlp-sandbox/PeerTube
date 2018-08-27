@@ -18,14 +18,13 @@ export class HeaderComponent implements OnInit {
     this.router.events
         .pipe(
           filter(e => e instanceof NavigationEnd),
-          map(() => getParameterByName('search', window.location.href)),
-          filter(searchQuery => !!searchQuery)
+          map(() => getParameterByName('search', window.location.href))
         )
-        .subscribe(searchQuery => this.searchValue = searchQuery)
+        .subscribe(searchQuery => this.searchValue = searchQuery || '')
   }
 
   doSearch () {
-    this.router.navigate([ '/videos', 'search' ], {
+    this.router.navigate([ '/search' ], {
       queryParams: { search: this.searchValue }
     })
   }

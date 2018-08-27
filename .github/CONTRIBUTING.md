@@ -4,9 +4,15 @@ Interesting in contributing? Awesome!
 
 **Quick Links:**
 
+  * [Translate](#translate)
   * [Give your feedback](#give-your-feedback)
   * [Write documentation](#write-documentation)
   * [Develop](#develop)
+
+
+## Translate
+
+You can help us to translate the PeerTube interface to many languages! See [the documentation](/support/doc/translation.md) to know how.
 
 
 ## Give your feedback
@@ -50,6 +56,10 @@ $ cd PeerTube
 $ yarn install --pure-lockfile
 ```
 
+Note that development is done on the `develop` branch. If you want to hack on
+Peertube, you should switch to that branch. Also note that you have to repeat
+the `yarn install --pure-lockfile` command.
+
 Then, create a postgres database and user with the values set in the
 `config/default.yaml` file. For instance, if you do not change the values
 there, the following commands would create a new database called `peertube_dev`
@@ -59,6 +69,13 @@ and a postgres user called `peertube` with password `peertube`:
 # sudo -u postgres createuser -P peertube
 Enter password for new role: peertube
 # sudo -u postgres createdb -O peertube peertube_dev
+```
+
+Then enable extensions PeerTube needs:
+
+```
+$ sudo -u postgres psql -c "CREATE EXTENSION pg_trgm;" peertube_dev
+$ sudo -u postgres psql -c "CREATE EXTENSION unaccent;" peertube_dev
 ```
 
 In dev mode, administrator username is **root** and password is **test**.
@@ -129,10 +146,12 @@ $ npm run play
 Then you will get access to the three nodes at `http://localhost:900{1,2,3}`
 with the `root` as username and `test{1,2,3}` for the password.
 
+Instance configurations are in `config/test-{1,2,3}.yaml`.
 
 ### Unit tests
 
 Create a PostgreSQL user **with the same name as your username** in order to avoid using the *postgres* user.
+
 Then, we can create the databases (if they don't already exist):
 
 ```
@@ -152,3 +171,6 @@ If you just want to run 1 test:
 ```
 $ npm run mocha -- --exit --require ts-node/register/type-check --bail server/tests/api/index.ts
 ```
+
+Instance configurations are in `config/test-{1,2,3,4,5,6}.yaml`.
+Note that only instance 2 has transcoding enabled.

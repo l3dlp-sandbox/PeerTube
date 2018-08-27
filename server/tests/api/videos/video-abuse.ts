@@ -2,25 +2,27 @@
 
 import * as chai from 'chai'
 import 'mocha'
-import { VideoAbuse } from '../../../../shared/models/videos'
+import { VideoAbuse, VideoAbuseState } from '../../../../shared/models/videos'
 import {
+  deleteVideoAbuse,
   flushAndRunMultipleServers,
-  flushTests,
   getVideoAbusesList,
   getVideosList,
   killallServers,
   reportVideoAbuse,
   ServerInfo,
   setAccessTokensToServers,
-  uploadVideo,
-  wait
+  updateVideoAbuse,
+  uploadVideo
 } from '../../utils/index'
 import { doubleFollow } from '../../utils/server/follows'
+import { waitJobs } from '../../utils/server/jobs'
 
 const expect = chai.expect
 
 describe('Test video abuses', function () {
   let servers: ServerInfo[] = []
+  let abuseServer2: VideoAbuse
 
   before(async function () {
     this.timeout(50000)
@@ -48,7 +50,7 @@ describe('Test video abuses', function () {
     await uploadVideo(servers[1].url, servers[1].accessToken, video2Attributes)
 
     // Wait videos propagation, server 2 has transcoding enabled
-    await wait(15000)
+    await waitJobs(servers)
 
     const res = await getVideosList(servers[0].url)
     const videos = res.body.data
@@ -68,13 +70,13 @@ describe('Test video abuses', function () {
   })
 
   it('Should report abuse on a local video', async function () {
-    this.timeout(10000)
+    this.timeout(15000)
 
     const reason = 'my super bad reason'
     await reportVideoAbuse(servers[0].url, servers[0].accessToken, servers[0].video.id, reason)
 
     // We wait requests propagation, even if the server 1 is not supposed to make a request to server 2
-    await wait(5000)
+    await waitJobs(servers)
   })
 
   it('Should have 1 video abuses on server 1 and 0 on server 2', async function () {
@@ -103,10 +105,10 @@ describe('Test video abuses', function () {
     await reportVideoAbuse(servers[0].url, servers[0].accessToken, servers[1].video.id, reason)
 
     // We wait requests propagation
-    await wait(5000)
+    await waitJobs(servers)
   })
 
-  it('Should have 2 video abuse on server 1 and 1 on server 2', async function () {
+  it('Should have 2 video abuses on server 1 and 1 on server 2', async function () {
     const res1 = await getVideoAbusesList(servers[0].url, servers[0].accessToken)
     expect(res1.body.total).to.equal(2)
     expect(res1.body.data).to.be.an('array')
@@ -117,30 +119,60 @@ describe('Test video abuses', function () {
     expect(abuse1.reporterAccount.name).to.equal('root')
     expect(abuse1.reporterAccount.host).to.equal('localhost:9001')
     expect(abuse1.video.id).to.equal(servers[0].video.id)
+    expect(abuse1.state.id).to.equal(VideoAbuseState.PENDING)
+    expect(abuse1.state.label).to.equal('Pending')
+    expect(abuse1.moderationComment).to.be.null
 
     const abuse2: VideoAbuse = res1.body.data[1]
     expect(abuse2.reason).to.equal('my super bad reason 2')
     expect(abuse2.reporterAccount.name).to.equal('root')
     expect(abuse2.reporterAccount.host).to.equal('localhost:9001')
     expect(abuse2.video.id).to.equal(servers[1].video.id)
+    expect(abuse2.state.id).to.equal(VideoAbuseState.PENDING)
+    expect(abuse2.state.label).to.equal('Pending')
+    expect(abuse2.moderationComment).to.be.null
 
     const res2 = await getVideoAbusesList(servers[1].url, servers[1].accessToken)
     expect(res2.body.total).to.equal(1)
     expect(res2.body.data).to.be.an('array')
     expect(res2.body.data.length).to.equal(1)
 
-    const abuse3: VideoAbuse = res2.body.data[0]
-    expect(abuse3.reason).to.equal('my super bad reason 2')
-    expect(abuse3.reporterAccount.name).to.equal('root')
-    expect(abuse3.reporterAccount.host).to.equal('localhost:9001')
+    abuseServer2 = res2.body.data[0]
+    expect(abuseServer2.reason).to.equal('my super bad reason 2')
+    expect(abuseServer2.reporterAccount.name).to.equal('root')
+    expect(abuseServer2.reporterAccount.host).to.equal('localhost:9001')
+    expect(abuseServer2.state.id).to.equal(VideoAbuseState.PENDING)
+    expect(abuseServer2.state.label).to.equal('Pending')
+    expect(abuseServer2.moderationComment).to.be.null
+  })
+
+  it('Should update the state of a video abuse', async function () {
+    const body = { state: VideoAbuseState.REJECTED }
+    await updateVideoAbuse(servers[1].url, servers[1].accessToken, abuseServer2.video.uuid, abuseServer2.id, body)
+
+    const res = await getVideoAbusesList(servers[1].url, servers[1].accessToken)
+    expect(res.body.data[0].state.id).to.equal(VideoAbuseState.REJECTED)
+  })
+
+  it('Should add a moderation comment', async function () {
+    const body = { state: VideoAbuseState.ACCEPTED, moderationComment: 'It is valid' }
+    await updateVideoAbuse(servers[1].url, servers[1].accessToken, abuseServer2.video.uuid, abuseServer2.id, body)
+
+    const res = await getVideoAbusesList(servers[1].url, servers[1].accessToken)
+    expect(res.body.data[0].state.id).to.equal(VideoAbuseState.ACCEPTED)
+    expect(res.body.data[0].moderationComment).to.equal('It is valid')
+  })
+
+  it('Should delete the video abuse', async function () {
+    await deleteVideoAbuse(servers[1].url, servers[1].accessToken, abuseServer2.video.uuid, abuseServer2.id)
+
+    const res = await getVideoAbusesList(servers[1].url, servers[1].accessToken)
+    expect(res.body.total).to.equal(0)
+    expect(res.body.data).to.be.an('array')
+    expect(res.body.data.length).to.equal(0)
   })
 
   after(async function () {
     killallServers(servers)
-
-    // Keep the logs if the test failed
-    if (this['ok']) {
-      await flushTests()
-    }
   })
 })

@@ -1,3 +1,5 @@
+import { VideoFile } from '../../../../shared/models/videos'
+
 function toTitleCase (str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1)
 }
@@ -17,79 +19,109 @@ function bytes (value) {
   return [ calc, format.type ]
 }
 
-function getStoredVolume () {
-  const value = getLocalStorage('volume')
-  if (value !== null && value !== undefined) {
-    const valueNumber = parseFloat(value)
-    if (isNaN(valueNumber)) return undefined
-
-    return valueNumber
-  }
-
-  return undefined
-}
-
-function getStoredMute () {
-  const value = getLocalStorage('mute')
-  if (value !== null && value !== undefined) return value === 'true'
-
-  return undefined
-}
-
-function getAverageBandwidth () {
-  const value = getLocalStorage('average-bandwidth')
-  if (value !== null && value !== undefined) {
-    const valueNumber = parseInt(value, 10)
-    if (isNaN(valueNumber)) return undefined
-
-    return valueNumber
-  }
-
-  return undefined
-}
-
-function saveVolumeInStore (value: number) {
-  return setLocalStorage('volume', value.toString())
-}
-
-function saveMuteInStore (value: boolean) {
-  return setLocalStorage('mute', value.toString())
-}
-
-function saveAverageBandwidth (value: number) {
-  return setLocalStorage('average-bandwidth', value.toString())
-}
-
 function isMobile () {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 }
 
-export {
-  toTitleCase,
-  getStoredVolume,
-  saveVolumeInStore,
-  saveAverageBandwidth,
-  getAverageBandwidth,
-  saveMuteInStore,
-  getStoredMute,
-  isMobile,
-  bytes
+function buildVideoLink (time?: number) {
+  const baseEmbedPath = window.location.pathname.replace('/embed/', '/watch/')
+  const baseEmbedURL = window.location.origin + baseEmbedPath
+
+  if (time) {
+    const timeInt = Math.floor(time)
+
+    const params = new URLSearchParams(window.location.search)
+    params.set('start', secondsToTime(timeInt))
+
+    return baseEmbedURL + '?' + params.toString()
+  }
+
+  return baseEmbedURL
+}
+
+function timeToInt (time: number | string) {
+  if (typeof time === 'number') return time
+
+  const reg = /^((\d+)h)?((\d+)m)?((\d+)s?)?$/
+  const matches = time.match(reg)
+
+  if (!matches) return 0
+
+  const hours = parseInt(matches[2] || '0', 10)
+  const minutes = parseInt(matches[4] || '0', 10)
+  const seconds = parseInt(matches[6] || '0', 10)
+
+  return hours * 3600 + minutes * 60 + seconds
+}
+
+function secondsToTime (seconds: number) {
+  let time = ''
+
+  let hours = Math.floor(seconds / 3600)
+  if (hours >= 1) time = hours + 'h'
+
+  seconds %= 3600
+  let minutes = Math.floor(seconds / 60)
+  if (minutes >= 1) time += minutes + 'm'
+
+  seconds %= 60
+  if (seconds >= 1) time += seconds + 's'
+
+  return time
+}
+
+function buildVideoEmbed (embedUrl: string) {
+  return '<iframe width="560" height="315" ' +
+    'sandbox="allow-same-origin allow-scripts" ' +
+    'src="' + embedUrl + '" ' +
+    'frameborder="0" allowfullscreen>' +
+    '</iframe>'
+}
+
+function copyToClipboard (text: string) {
+  const el = document.createElement('textarea')
+  el.value = text
+  el.setAttribute('readonly', '')
+  el.style.position = 'absolute'
+  el.style.left = '-9999px'
+  document.body.appendChild(el)
+  el.select()
+  document.execCommand('copy')
+  document.body.removeChild(el)
+}
+
+function videoFileMaxByResolution (files: VideoFile[]) {
+  let max = files[0]
+
+  for (let i = 1; i < files.length; i++) {
+    const file = files[i]
+    if (max.resolution.id < file.resolution.id) max = file
+  }
+
+  return max
+}
+
+function videoFileMinByResolution (files: VideoFile[]) {
+  let min = files[0]
+
+  for (let i = 1; i < files.length; i++) {
+    const file = files[i]
+    if (min.resolution.id > file.resolution.id) min = file
+  }
+
+  return min
 }
 
 // ---------------------------------------------------------------------------
 
-const KEY_PREFIX = 'peertube-videojs-'
-
-function getLocalStorage (key: string) {
-  try {
-    return localStorage.getItem(KEY_PREFIX + key)
-  } catch {
-    return undefined
-  }
-}
-
-function setLocalStorage (key: string, value: string) {
-  try {
-    localStorage.setItem(KEY_PREFIX + key, value)
-  } catch { /* empty */ }
+export {
+  toTitleCase,
+  timeToInt,
+  buildVideoLink,
+  buildVideoEmbed,
+  videoFileMaxByResolution,
+  videoFileMinByResolution,
+  copyToClipboard,
+  isMobile,
+  bytes
 }

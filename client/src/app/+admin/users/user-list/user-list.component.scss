@@ -2,5 +2,17 @@
 @import '_mixins';
 
 .add-button {
-  @include create-button;
+  @include create-button('../../../../assets/images/global/add.svg');
+}
+
+tr.banned {
+  color: red;
+}
+
+.banned-info {
+  font-style: italic;
+}
+
+.ban-reason-label {
+  font-weight: $font-semibold;
 }

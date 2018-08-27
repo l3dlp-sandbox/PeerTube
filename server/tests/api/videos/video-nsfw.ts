@@ -8,12 +8,15 @@ import { createUser } from '../../utils/users/users'
 import { getMyVideos } from '../../utils/videos/videos'
 import {
   getAccountVideos,
-  getConfig, getCustomConfig,
-  getMyUserInformation, getVideoChannelVideos,
+  getConfig,
+  getCustomConfig,
+  getMyUserInformation,
+  getVideoChannelVideos,
   getVideosListWithToken,
   runServer,
   searchVideo,
-  searchVideoWithToken, updateCustomConfig,
+  searchVideoWithToken,
+  updateCustomConfig,
   updateMyUser
 } from '../../utils'
 import { ServerConfig } from '../../../../shared/models'
@@ -27,19 +30,19 @@ describe('Test video NSFW policy', function () {
   let userAccessToken: string
   let customConfig: CustomConfig
 
-  function getVideosFunctions (token?: string) {
+  function getVideosFunctions (token?: string, query = {}) {
     return getMyUserInformation(server.url, server.accessToken)
       .then(res => {
         const user: User = res.body
-        const videoChannelUUID = user.videoChannels[0].uuid
+        const videoChannelName = user.videoChannels[0].name
         const accountName = user.account.name + '@' + user.account.host
 
         if (token) {
           return Promise.all([
-            getVideosListWithToken(server.url, token),
-            searchVideoWithToken(server.url, 'n', token),
-            getAccountVideos(server.url, token, accountName, 0, 5),
-            getVideoChannelVideos(server.url, token, videoChannelUUID, 0, 5)
+            getVideosListWithToken(server.url, token, query),
+            searchVideoWithToken(server.url, 'n', token, query),
+            getAccountVideos(server.url, token, accountName, 0, 5, undefined, query),
+            getVideoChannelVideos(server.url, token, videoChannelName, 0, 5, undefined, query)
           ])
         }
 
@@ -47,7 +50,7 @@ describe('Test video NSFW policy', function () {
           getVideosList(server.url),
           searchVideo(server.url, 'n'),
           getAccountVideos(server.url, undefined, accountName, 0, 5),
-          getVideoChannelVideos(server.url, undefined, videoChannelUUID, 0, 5)
+          getVideoChannelVideos(server.url, undefined, videoChannelName, 0, 5)
         ])
       })
   }
@@ -197,14 +200,40 @@ describe('Test video NSFW policy', function () {
       expect(videos[ 0 ].name).to.equal('normal')
       expect(videos[ 1 ].name).to.equal('nsfw')
     })
+
+    it('Should display NSFW videos when the nsfw param === true', async function () {
+      for (const res of await getVideosFunctions(server.accessToken, { nsfw: true })) {
+        expect(res.body.total).to.equal(1)
+
+        const videos = res.body.data
+        expect(videos).to.have.lengthOf(1)
+        expect(videos[ 0 ].name).to.equal('nsfw')
+      }
+    })
+
+    it('Should hide NSFW videos when the nsfw param === true', async function () {
+      for (const res of await getVideosFunctions(server.accessToken, { nsfw: false })) {
+        expect(res.body.total).to.equal(1)
+
+        const videos = res.body.data
+        expect(videos).to.have.lengthOf(1)
+        expect(videos[ 0 ].name).to.equal('normal')
+      }
+    })
+
+    it('Should display both videos when the nsfw param === both', async function () {
+      for (const res of await getVideosFunctions(server.accessToken, { nsfw: 'both' })) {
+        expect(res.body.total).to.equal(2)
+
+        const videos = res.body.data
+        expect(videos).to.have.lengthOf(2)
+        expect(videos[ 0 ].name).to.equal('normal')
+        expect(videos[ 1 ].name).to.equal('nsfw')
+      }
+    })
   })
 
   after(async function () {
     killallServers([ server ])
-
-    // Keep the logs if the test failed
-    if (this['ok']) {
-      await flushTests()
-    }
   })
 })

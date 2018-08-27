@@ -3,14 +3,18 @@
 import { omit } from 'lodash'
 import 'mocha'
 import { join } from 'path'
-import { UserRole } from '../../../../shared'
+import { UserRole, VideoImport, VideoImportState } from '../../../../shared'
 
 import {
   createUser, flushTests, getMyUserInformation, getMyUserVideoRating, getUsersList, immutableAssign, killallServers, makeGetRequest,
   makePostBodyRequest, makeUploadRequest, makePutBodyRequest, registerUser, removeUser, runServer, ServerInfo, setAccessTokensToServers,
-  updateUser, uploadVideo, userLogin
+  updateUser, uploadVideo, userLogin, deleteMe, unblockUser, blockUser
 } from '../../utils'
 import { checkBadCountPagination, checkBadSortPagination, checkBadStartPagination } from '../../utils/requests/check-api-params'
+import { getMagnetURI, getMyVideoImports, getYoutubeVideoUrl, importVideo } from '../../utils/videos/video-imports'
+import { VideoPrivacy } from '../../../../shared/models/videos'
+import { waitJobs } from '../../utils/server/jobs'
+import { expect } from 'chai'
 
 describe('Test users API validators', function () {
   const path = '/api/v1/users/'
@@ -20,6 +24,7 @@ describe('Test users API validators', function () {
   let server: ServerInfo
   let serverWithRegistrationDisabled: ServerInfo
   let userAccessToken = ''
+  let channelId: number
   const user = {
     username: 'user1',
     password: 'my super password'
@@ -41,8 +46,15 @@ describe('Test users API validators', function () {
     await createUser(server.url, server.accessToken, user.username, user.password, videoQuota)
     userAccessToken = await userLogin(server, user)
 
-    const res = await uploadVideo(server.url, server.accessToken, {})
-    videoId = res.body.video.id
+    {
+      const res = await getMyUserInformation(server.url, server.accessToken)
+      channelId = res.body.videoChannels[ 0 ].id
+    }
+
+    {
+      const res = await uploadVideo(server.url, server.accessToken, {})
+      videoId = res.body.video.id
+    }
   })
 
   describe('When listing users', function () {
@@ -179,6 +191,18 @@ describe('Test users API validators', function () {
       await makePostBodyRequest({ url: server.url, path, token: server.accessToken, fields })
     })
 
+    it('Should fail with a "peertube" username', async function () {
+      const fields = immutableAssign(baseCorrectParams, { username: 'peertube' })
+
+      await makePostBodyRequest({
+        url: server.url,
+        path,
+        token: server.accessToken,
+        fields,
+        statusCodeExpected: 409
+      })
+    })
+
     it('Should succeed with the correct params', async function () {
       await makePostBodyRequest({
         url: server.url,
@@ -279,7 +303,7 @@ describe('Test users API validators', function () {
     it('Should fail without an incorrect input file', async function () {
       const fields = {}
       const attaches = {
-        'avatarfile': join(__dirname, '..', 'fixtures', 'video_short.mp4')
+        'avatarfile': join(__dirname, '..', '..', 'fixtures', 'video_short.mp4')
       }
       await makeUploadRequest({ url: server.url, path: path + '/me/avatar/pick', token: server.accessToken, fields, attaches })
     })
@@ -287,15 +311,29 @@ describe('Test users API validators', function () {
     it('Should fail with a big file', async function () {
       const fields = {}
       const attaches = {
-        'avatarfile': join(__dirname, '..', 'fixtures', 'avatar-big.png')
+        'avatarfile': join(__dirname, '..', '..', 'fixtures', 'avatar-big.png')
       }
       await makeUploadRequest({ url: server.url, path: path + '/me/avatar/pick', token: server.accessToken, fields, attaches })
+    })
+
+    it('Should fail with an unauthenticated user', async function () {
+      const fields = {}
+      const attaches = {
+        'avatarfile': join(__dirname, '..', '..', 'fixtures', 'avatar.png')
+      }
+      await makeUploadRequest({
+        url: server.url,
+        path: path + '/me/avatar/pick',
+        fields,
+        attaches,
+        statusCodeExpected: 401
+      })
     })
 
     it('Should succeed with the correct params', async function () {
       const fields = {}
       const attaches = {
-        'avatarfile': join(__dirname, '..', 'fixtures', 'avatar.png')
+        'avatarfile': join(__dirname, '..', '..', 'fixtures', 'avatar.png')
       }
       await makeUploadRequest({
         url: server.url,
@@ -417,17 +455,35 @@ describe('Test users API validators', function () {
     })
   })
 
-  describe('When removing an user', function () {
+  describe('When blocking/unblocking/removing user', function () {
     it('Should fail with an incorrect id', async function () {
       await removeUser(server.url, 'blabla', server.accessToken, 400)
+      await blockUser(server.url, 'blabla', server.accessToken, 400)
+      await unblockUser(server.url, 'blabla', server.accessToken, 400)
     })
 
     it('Should fail with the root user', async function () {
       await removeUser(server.url, rootId, server.accessToken, 400)
+      await blockUser(server.url, rootId, server.accessToken, 400)
+      await unblockUser(server.url, rootId, server.accessToken, 400)
     })
 
     it('Should return 404 with a non existing id', async function () {
       await removeUser(server.url, 4545454, server.accessToken, 404)
+      await blockUser(server.url, 4545454, server.accessToken, 404)
+      await unblockUser(server.url, 4545454, server.accessToken, 404)
+    })
+
+    it('Should fail with a non admin user', async function () {
+      await removeUser(server.url, userId, userAccessToken, 403)
+      await blockUser(server.url, userId, userAccessToken, 403)
+      await unblockUser(server.url, userId, userAccessToken, 403)
+    })
+  })
+
+  describe('When deleting our account', function () {
+    it('Should fail with with the root account', async function () {
+      await deleteMe(server.url, server.accessToken, 400)
     })
   })
 
@@ -483,6 +539,18 @@ describe('Test users API validators', function () {
 
     it('Should fail if we register a user with the same username', async function () {
       const fields = immutableAssign(baseCorrectParams, { username: 'root' })
+
+      await makePostBodyRequest({
+        url: server.url,
+        path: registrationPath,
+        token: server.accessToken,
+        fields,
+        statusCodeExpected: 409
+      })
+    })
+
+    it('Should fail with a "peertube" username', async function () {
+      const fields = immutableAssign(baseCorrectParams, { username: 'peertube' })
 
       await makePostBodyRequest({
         url: server.url,
@@ -551,7 +619,7 @@ describe('Test users API validators', function () {
     })
 
     it('Should fail with a registered user having too many video', async function () {
-      this.timeout(15000)
+      this.timeout(30000)
 
       const user = {
         username: 'user3',
@@ -566,6 +634,32 @@ describe('Test users API validators', function () {
       await uploadVideo(server.url, userAccessToken, videoAttributes)
       await uploadVideo(server.url, userAccessToken, videoAttributes)
       await uploadVideo(server.url, userAccessToken, videoAttributes, 403)
+    })
+
+    it('Should fail to import with HTTP/Torrent/magnet', async function () {
+      this.timeout(120000)
+
+      const baseAttributes = {
+        channelId: 1,
+        privacy: VideoPrivacy.PUBLIC
+      }
+      await importVideo(server.url, server.accessToken, immutableAssign(baseAttributes, { targetUrl: getYoutubeVideoUrl() }))
+      await importVideo(server.url, server.accessToken, immutableAssign(baseAttributes, { magnetUri: getMagnetURI() }))
+      await importVideo(server.url, server.accessToken, immutableAssign(baseAttributes, { torrentfile: 'video-720p.torrent' }))
+
+      await waitJobs([ server ])
+
+      const res = await getMyVideoImports(server.url, server.accessToken)
+
+      expect(res.body.total).to.equal(3)
+      const videoImports: VideoImport[] = res.body.data
+      expect(videoImports).to.have.lengthOf(3)
+
+      for (const videoImport of videoImports) {
+        expect(videoImport.state.id).to.equal(VideoImportState.FAILED)
+        expect(videoImport.error).not.to.be.undefined
+        expect(videoImport.error).to.contain('user video quota is exceeded')
+      }
     })
   })
 

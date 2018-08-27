@@ -1,4 +1,4 @@
-import { ActivityCreate, VideoTorrentObject } from '../../../../shared'
+import { ActivityCreate, VideoAbuseState, VideoTorrentObject } from '../../../../shared'
 import { DislikeObject, VideoAbuseObject, ViewObject } from '../../../../shared/models/activitypub/objects'
 import { VideoCommentObject } from '../../../../shared/models/activitypub/objects/video-comment-object'
 import { retryTransactionWrapper } from '../../../helpers/database-utils'
@@ -9,10 +9,9 @@ import { ActorModel } from '../../../models/activitypub/actor'
 import { VideoAbuseModel } from '../../../models/video/video-abuse'
 import { VideoCommentModel } from '../../../models/video/video-comment'
 import { getOrCreateActorAndServerAndModel } from '../actor'
-import { getActorsInvolvedInVideo } from '../audience'
-import { resolveThread } from '../video-comments'
-import { getOrCreateAccountAndVideoAndChannel } from '../videos'
-import { forwardActivity } from '../send/utils'
+import { addVideoComment, resolveThread } from '../video-comments'
+import { getOrCreateVideoAndAccountAndChannel } from '../videos'
+import { forwardActivity, forwardVideoRelatedActivity } from '../send/utils'
 
 async function processCreateActivity (activity: ActivityCreate) {
   const activityObject = activity.object
@@ -22,13 +21,13 @@ async function processCreateActivity (activity: ActivityCreate) {
   if (activityType === 'View') {
     return processCreateView(actor, activity)
   } else if (activityType === 'Dislike') {
-    return processCreateDislike(actor, activity)
+    return retryTransactionWrapper(processCreateDislike, actor, activity)
   } else if (activityType === 'Video') {
-    return processCreateVideo(actor, activity)
+    return processCreateVideo(activity)
   } else if (activityType === 'Flag') {
-    return processCreateVideoAbuse(actor, activityObject as VideoAbuseObject)
+    return retryTransactionWrapper(processCreateVideoAbuse, actor, activityObject as VideoAbuseObject)
   } else if (activityType === 'Note') {
-    return processCreateVideoComment(actor, activity)
+    return retryTransactionWrapper(processCreateVideoComment, actor, activity)
   }
 
   logger.warn('Unknown activity object type %s when creating activity.', activityType, { activity: activity.id })
@@ -43,33 +42,21 @@ export {
 
 // ---------------------------------------------------------------------------
 
-async function processCreateVideo (
-  actor: ActorModel,
-  activity: ActivityCreate
-) {
+async function processCreateVideo (activity: ActivityCreate) {
   const videoToCreateData = activity.object as VideoTorrentObject
 
-  const { video } = await getOrCreateAccountAndVideoAndChannel(videoToCreateData, actor)
+  const { video } = await getOrCreateVideoAndAccountAndChannel(videoToCreateData)
 
   return video
 }
 
 async function processCreateDislike (byActor: ActorModel, activity: ActivityCreate) {
-  const options = {
-    arguments: [ byActor, activity ],
-    errorMessage: 'Cannot dislike the video with many retries.'
-  }
-
-  return retryTransactionWrapper(createVideoDislike, options)
-}
-
-async function createVideoDislike (byActor: ActorModel, activity: ActivityCreate) {
   const dislike = activity.object as DislikeObject
   const byAccount = byActor.Account
 
   if (!byAccount) throw new Error('Cannot create dislike with the non account actor ' + byActor.url)
 
-  const { video } = await getOrCreateAccountAndVideoAndChannel(dislike.object)
+  const { video } = await getOrCreateVideoAndAccountAndChannel(dislike.object)
 
   return sequelizeTypescript.transaction(async t => {
     const rate = {
@@ -87,7 +74,8 @@ async function createVideoDislike (byActor: ActorModel, activity: ActivityCreate
     if (video.isOwned() && created === true) {
       // Don't resend the activity to the sender
       const exceptions = [ byActor ]
-      await forwardActivity(activity, t, exceptions)
+
+      await forwardVideoRelatedActivity(activity, t, exceptions, video)
     }
   })
 }
@@ -95,7 +83,7 @@ async function createVideoDislike (byActor: ActorModel, activity: ActivityCreate
 async function processCreateView (byActor: ActorModel, activity: ActivityCreate) {
   const view = activity.object as ViewObject
 
-  const { video } = await getOrCreateAccountAndVideoAndChannel(view.object)
+  const { video } = await getOrCreateVideoAndAccountAndChannel(view.object)
 
   const actor = await ActorModel.loadByUrl(view.actor)
   if (!actor) throw new Error('Unknown actor ' + view.actor)
@@ -109,28 +97,20 @@ async function processCreateView (byActor: ActorModel, activity: ActivityCreate)
   }
 }
 
-function processCreateVideoAbuse (actor: ActorModel, videoAbuseToCreateData: VideoAbuseObject) {
-  const options = {
-    arguments: [ actor, videoAbuseToCreateData ],
-    errorMessage: 'Cannot insert the remote video abuse with many retries.'
-  }
-
-  return retryTransactionWrapper(addRemoteVideoAbuse, options)
-}
-
-async function addRemoteVideoAbuse (actor: ActorModel, videoAbuseToCreateData: VideoAbuseObject) {
+async function processCreateVideoAbuse (actor: ActorModel, videoAbuseToCreateData: VideoAbuseObject) {
   logger.debug('Reporting remote abuse for video %s.', videoAbuseToCreateData.object)
 
   const account = actor.Account
   if (!account) throw new Error('Cannot create dislike with the non account actor ' + actor.url)
 
-  const { video } = await getOrCreateAccountAndVideoAndChannel(videoAbuseToCreateData.object)
+  const { video } = await getOrCreateVideoAndAccountAndChannel(videoAbuseToCreateData.object)
 
   return sequelizeTypescript.transaction(async t => {
     const videoAbuseData = {
       reporterAccountId: account.id,
       reason: videoAbuseToCreateData.content,
-      videoId: video.id
+      videoId: video.id,
+      state: VideoAbuseState.PENDING
     }
 
     await VideoAbuseModel.create(videoAbuseData)
@@ -139,62 +119,20 @@ async function addRemoteVideoAbuse (actor: ActorModel, videoAbuseToCreateData: V
   })
 }
 
-function processCreateVideoComment (byActor: ActorModel, activity: ActivityCreate) {
-  const options = {
-    arguments: [ byActor, activity ],
-    errorMessage: 'Cannot create video comment with many retries.'
-  }
-
-  return retryTransactionWrapper(createVideoComment, options)
-}
-
-async function createVideoComment (byActor: ActorModel, activity: ActivityCreate) {
-  const comment = activity.object as VideoCommentObject
+async function processCreateVideoComment (byActor: ActorModel, activity: ActivityCreate) {
+  const commentObject = activity.object as VideoCommentObject
   const byAccount = byActor.Account
 
   if (!byAccount) throw new Error('Cannot create video comment with the non account actor ' + byActor.url)
 
-  const { video, parents } = await resolveThread(comment.inReplyTo)
+  const { video } = await resolveThread(commentObject.inReplyTo)
 
-  return sequelizeTypescript.transaction(async t => {
-    let originCommentId = null
-    let inReplyToCommentId = null
+  const { created } = await addVideoComment(video, commentObject.id)
 
-    if (parents.length !== 0) {
-      const parent = parents[0]
+  if (video.isOwned() && created === true) {
+    // Don't resend the activity to the sender
+    const exceptions = [ byActor ]
 
-      originCommentId = parent.getThreadId()
-      inReplyToCommentId = parent.id
-    }
-
-    // This is a new thread
-    const objectToCreate = {
-      url: comment.id,
-      text: comment.content,
-      originCommentId,
-      inReplyToCommentId,
-      videoId: video.id,
-      accountId: byAccount.id
-    }
-
-    const options = {
-      where: {
-        url: objectToCreate.url
-      },
-      defaults: objectToCreate,
-      transaction: t
-    }
-    const [ ,created ] = await VideoCommentModel.findOrCreate(options)
-
-    if (video.isOwned() && created === true) {
-      // Don't resend the activity to the sender
-      const exceptions = [ byActor ]
-
-      // Mastodon does not add our announces in audience, so we forward to them manually
-      const additionalActors = await getActorsInvolvedInVideo(video, t)
-      const additionalFollowerUrls = additionalActors.map(a => a.followersUrl)
-
-      await forwardActivity(activity, t, exceptions, additionalFollowerUrls)
-    }
-  })
+    await forwardVideoRelatedActivity(activity, undefined, exceptions, video)
+  }
 }

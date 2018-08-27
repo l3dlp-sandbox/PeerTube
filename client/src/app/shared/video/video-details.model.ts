@@ -1,7 +1,8 @@
-import { UserRight, VideoChannel, VideoDetails as VideoDetailsServerModel, VideoFile } from '../../../../../shared'
+import { UserRight, VideoConstant, VideoDetails as VideoDetailsServerModel, VideoFile, VideoState } from '../../../../../shared'
 import { AuthUser } from '../../core'
 import { Video } from '../../shared/video/video.model'
 import { Account } from '@app/shared/account/account.model'
+import { VideoChannel } from '@app/shared/video-channel/video-channel.model'
 
 export class VideoDetails extends Video implements VideoDetailsServerModel {
   descriptionPath: string
@@ -12,15 +13,18 @@ export class VideoDetails extends Video implements VideoDetailsServerModel {
   account: Account
   commentsEnabled: boolean
 
+  waitTranscoding: boolean
+  state: VideoConstant<VideoState>
+
   likesPercent: number
   dislikesPercent: number
 
-  constructor (hash: VideoDetailsServerModel) {
-    super(hash)
+  constructor (hash: VideoDetailsServerModel, translations = {}) {
+    super(hash, translations)
 
     this.descriptionPath = hash.descriptionPath
     this.files = hash.files
-    this.channel = hash.channel
+    this.channel = new VideoChannel(hash.channel)
     this.account = new Account(hash.account)
     this.tags = hash.tags
     this.support = hash.support
@@ -34,7 +38,11 @@ export class VideoDetails extends Video implements VideoDetailsServerModel {
   }
 
   isBlackistableBy (user: AuthUser) {
-    return user && user.hasRight(UserRight.MANAGE_VIDEO_BLACKLIST) === true && this.isLocal === false
+    return this.blacklisted !== true && user && user.hasRight(UserRight.MANAGE_VIDEO_BLACKLIST) === true
+  }
+
+  isUnblacklistableBy (user: AuthUser) {
+    return this.blacklisted === true && user && user.hasRight(UserRight.MANAGE_VIDEO_BLACKLIST) === true
   }
 
   isUpdatableBy (user: AuthUser) {

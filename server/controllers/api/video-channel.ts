@@ -1,30 +1,37 @@
 import * as express from 'express'
-import { getFormattedObjects, resetSequelizeInstance } from '../../helpers/utils'
+import { getFormattedObjects, getServerActor } from '../../helpers/utils'
 import {
   asyncMiddleware,
+  asyncRetryTransactionMiddleware,
   authenticate,
+  commonVideosFiltersValidator,
   optionalAuthenticate,
   paginationValidator,
   setDefaultPagination,
   setDefaultSort,
   videoChannelsAddValidator,
-  videoChannelsGetValidator,
   videoChannelsRemoveValidator,
   videoChannelsSortValidator,
   videoChannelsUpdateValidator
 } from '../../middlewares'
 import { VideoChannelModel } from '../../models/video/video-channel'
-import { videosSortValidator } from '../../middlewares/validators'
+import { videoChannelsNameWithHostValidator, videosSortValidator } from '../../middlewares/validators'
 import { sendUpdateActor } from '../../lib/activitypub/send'
 import { VideoChannelCreate, VideoChannelUpdate } from '../../../shared'
 import { createVideoChannel } from '../../lib/video-channel'
-import { isNSFWHidden } from '../../helpers/express-utils'
+import { buildNSFWFilter, createReqFiles, isUserAbleToSearchRemoteURI } from '../../helpers/express-utils'
 import { setAsyncActorKeys } from '../../lib/activitypub'
-import { retryTransactionWrapper } from '../../helpers/database-utils'
 import { AccountModel } from '../../models/account/account'
-import { sequelizeTypescript } from '../../initializers'
+import { CONFIG, IMAGE_MIMETYPE_EXT, sequelizeTypescript } from '../../initializers'
 import { logger } from '../../helpers/logger'
 import { VideoModel } from '../../models/video/video'
+import { updateAvatarValidator } from '../../middlewares/validators/avatar'
+import { updateActorAvatarFile } from '../../lib/avatar'
+import { auditLoggerFactory, VideoChannelAuditView } from '../../helpers/audit-logger'
+import { resetSequelizeInstance } from '../../helpers/database-utils'
+
+const auditLogger = auditLoggerFactory('channels')
+const reqAvatarFile = createReqFiles([ 'avatarfile' ], IMAGE_MIMETYPE_EXT, { avatarfile: CONFIG.STORAGE.AVATARS_DIR })
 
 const videoChannelRouter = express.Router()
 
@@ -39,33 +46,43 @@ videoChannelRouter.get('/',
 videoChannelRouter.post('/',
   authenticate,
   videoChannelsAddValidator,
-  asyncMiddleware(addVideoChannelRetryWrapper)
+  asyncRetryTransactionMiddleware(addVideoChannel)
 )
 
-videoChannelRouter.put('/:id',
+videoChannelRouter.post('/:nameWithHost/avatar/pick',
+  authenticate,
+  reqAvatarFile,
+  // Check the rights
+  asyncMiddleware(videoChannelsUpdateValidator),
+  updateAvatarValidator,
+  asyncMiddleware(updateVideoChannelAvatar)
+)
+
+videoChannelRouter.put('/:nameWithHost',
   authenticate,
   asyncMiddleware(videoChannelsUpdateValidator),
-  updateVideoChannelRetryWrapper
+  asyncRetryTransactionMiddleware(updateVideoChannel)
 )
 
-videoChannelRouter.delete('/:id',
+videoChannelRouter.delete('/:nameWithHost',
   authenticate,
   asyncMiddleware(videoChannelsRemoveValidator),
-  asyncMiddleware(removeVideoChannelRetryWrapper)
+  asyncRetryTransactionMiddleware(removeVideoChannel)
 )
 
-videoChannelRouter.get('/:id',
-  asyncMiddleware(videoChannelsGetValidator),
+videoChannelRouter.get('/:nameWithHost',
+  asyncMiddleware(videoChannelsNameWithHostValidator),
   asyncMiddleware(getVideoChannel)
 )
 
-videoChannelRouter.get('/:id/videos',
-  asyncMiddleware(videoChannelsGetValidator),
+videoChannelRouter.get('/:nameWithHost/videos',
+  asyncMiddleware(videoChannelsNameWithHostValidator),
   paginationValidator,
   videosSortValidator,
   setDefaultSort,
   setDefaultPagination,
   optionalAuthenticate,
+  commonVideosFiltersValidator,
   asyncMiddleware(listVideoChannelVideos)
 )
 
@@ -78,26 +95,30 @@ export {
 // ---------------------------------------------------------------------------
 
 async function listVideoChannels (req: express.Request, res: express.Response, next: express.NextFunction) {
-  const resultList = await VideoChannelModel.listForApi(req.query.start, req.query.count, req.query.sort)
+  const serverActor = await getServerActor()
+  const resultList = await VideoChannelModel.listForApi(serverActor.id, req.query.start, req.query.count, req.query.sort)
 
   return res.json(getFormattedObjects(resultList.data, resultList.total))
 }
 
-// Wrapper to video channel add that retry the async function if there is a database error
-// We need this because we run the transaction in SERIALIZABLE isolation that can fail
-async function addVideoChannelRetryWrapper (req: express.Request, res: express.Response, next: express.NextFunction) {
-  const options = {
-    arguments: [ req, res ],
-    errorMessage: 'Cannot insert the video video channel with many retries.'
-  }
+async function updateVideoChannelAvatar (req: express.Request, res: express.Response, next: express.NextFunction) {
+  const avatarPhysicalFile = req.files[ 'avatarfile' ][ 0 ]
+  const videoChannel = res.locals.videoChannel as VideoChannelModel
+  const oldVideoChannelAuditKeys = new VideoChannelAuditView(videoChannel.toFormattedJSON())
 
-  const videoChannel = await retryTransactionWrapper(addVideoChannel, options)
-  return res.json({
-    videoChannel: {
-      id: videoChannel.id,
-      uuid: videoChannel.Actor.uuid
-    }
-  }).end()
+  const avatar = await updateActorAvatarFile(avatarPhysicalFile, videoChannel.Actor, videoChannel)
+
+  auditLogger.update(
+    res.locals.oauth.token.User.Account.Actor.getIdentifier(),
+    new VideoChannelAuditView(videoChannel.toFormattedJSON()),
+    oldVideoChannelAuditKeys
+  )
+
+  return res
+    .json({
+      avatar: avatar.toFormattedJSON()
+    })
+    .end()
 }
 
 async function addVideoChannel (req: express.Request, res: express.Response) {
@@ -111,25 +132,24 @@ async function addVideoChannel (req: express.Request, res: express.Response) {
   setAsyncActorKeys(videoChannelCreated.Actor)
     .catch(err => logger.error('Cannot set async actor keys for account %s.', videoChannelCreated.Actor.uuid, { err }))
 
+  auditLogger.create(
+    res.locals.oauth.token.User.Account.Actor.getIdentifier(),
+    new VideoChannelAuditView(videoChannelCreated.toFormattedJSON())
+  )
   logger.info('Video channel with uuid %s created.', videoChannelCreated.Actor.uuid)
 
-  return videoChannelCreated
-}
-
-async function updateVideoChannelRetryWrapper (req: express.Request, res: express.Response, next: express.NextFunction) {
-  const options = {
-    arguments: [ req, res ],
-    errorMessage: 'Cannot update the video with many retries.'
-  }
-
-  await retryTransactionWrapper(updateVideoChannel, options)
-
-  return res.type('json').status(204).end()
+  return res.json({
+    videoChannel: {
+      id: videoChannelCreated.id,
+      uuid: videoChannelCreated.Actor.uuid
+    }
+  }).end()
 }
 
 async function updateVideoChannel (req: express.Request, res: express.Response) {
   const videoChannelInstance = res.locals.videoChannel as VideoChannelModel
   const videoChannelFieldsSave = videoChannelInstance.toJSON()
+  const oldVideoChannelAuditKeys = new VideoChannelAuditView(videoChannelInstance.toFormattedJSON())
   const videoChannelInfoToUpdate = req.body as VideoChannelUpdate
 
   try {
@@ -144,9 +164,14 @@ async function updateVideoChannel (req: express.Request, res: express.Response) 
 
       const videoChannelInstanceUpdated = await videoChannelInstance.save(sequelizeOptions)
       await sendUpdateActor(videoChannelInstanceUpdated, t)
-    })
 
-    logger.info('Video channel with name %s and uuid %s updated.', videoChannelInstance.name, videoChannelInstance.Actor.uuid)
+      auditLogger.update(
+        res.locals.oauth.token.User.Account.Actor.getIdentifier(),
+        new VideoChannelAuditView(videoChannelInstanceUpdated.toFormattedJSON()),
+        oldVideoChannelAuditKeys
+      )
+      logger.info('Video channel with name %s and uuid %s updated.', videoChannelInstance.name, videoChannelInstance.Actor.uuid)
+    })
   } catch (err) {
     logger.debug('Cannot update the video channel.', { err })
 
@@ -157,15 +182,6 @@ async function updateVideoChannel (req: express.Request, res: express.Response) 
 
     throw err
   }
-}
-
-async function removeVideoChannelRetryWrapper (req: express.Request, res: express.Response, next: express.NextFunction) {
-  const options = {
-    arguments: [ req, res ],
-    errorMessage: 'Cannot remove the video channel with many retries.'
-  }
-
-  await retryTransactionWrapper(removeVideoChannel, options)
 
   return res.type('json').status(204).end()
 }
@@ -173,12 +189,17 @@ async function removeVideoChannelRetryWrapper (req: express.Request, res: expres
 async function removeVideoChannel (req: express.Request, res: express.Response) {
   const videoChannelInstance: VideoChannelModel = res.locals.videoChannel
 
-  return sequelizeTypescript.transaction(async t => {
+  await sequelizeTypescript.transaction(async t => {
     await videoChannelInstance.destroy({ transaction: t })
 
+    auditLogger.delete(
+      res.locals.oauth.token.User.Account.Actor.getIdentifier(),
+      new VideoChannelAuditView(videoChannelInstance.toFormattedJSON())
+    )
     logger.info('Video channel with name %s and uuid %s deleted.', videoChannelInstance.name, videoChannelInstance.Actor.uuid)
   })
 
+  return res.type('json').status(204).end()
 }
 
 async function getVideoChannel (req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -189,12 +210,20 @@ async function getVideoChannel (req: express.Request, res: express.Response, nex
 
 async function listVideoChannelVideos (req: express.Request, res: express.Response, next: express.NextFunction) {
   const videoChannelInstance: VideoChannelModel = res.locals.videoChannel
+  const actorId = isUserAbleToSearchRemoteURI(res) ? null : undefined
 
   const resultList = await VideoModel.listForApi({
+    actorId,
     start: req.query.start,
     count: req.query.count,
     sort: req.query.sort,
-    hideNSFW: isNSFWHidden(res),
+    includeLocalVideos: true,
+    categoryOneOf: req.query.categoryOneOf,
+    licenceOneOf: req.query.licenceOneOf,
+    languageOneOf: req.query.languageOneOf,
+    tagsOneOf: req.query.tagsOneOf,
+    tagsAllOf: req.query.tagsAllOf,
+    nsfw: buildNSFWFilter(res, req.query.nsfw),
     withFiles: false,
     videoChannelId: videoChannelInstance.id
   })

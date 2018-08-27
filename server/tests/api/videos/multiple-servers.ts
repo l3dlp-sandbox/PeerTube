@@ -6,7 +6,6 @@ import { join } from 'path'
 import * as request from 'supertest'
 import { VideoPrivacy } from '../../../../shared/models/videos'
 import { VideoComment, VideoCommentThreadTree } from '../../../../shared/models/videos/video-comment.model'
-
 import {
   addVideoChannel,
   checkVideoFilesWereRemoved,
@@ -15,7 +14,8 @@ import {
   dateIsValid,
   doubleFollow,
   flushAndRunMultipleServers,
-  flushTests, getLocalVideos,
+  flushTests,
+  getLocalVideos,
   getVideo,
   getVideoChannelsList,
   getVideosList,
@@ -39,7 +39,7 @@ import {
   getVideoCommentThreads,
   getVideoThreadComments
 } from '../../utils/videos/video-comments'
-import { getAccountsList } from '../../utils/users/accounts'
+import { waitJobs } from '../../utils/server/jobs'
 
 const expect = chai.expect
 
@@ -59,6 +59,7 @@ describe('Test multiple servers', function () {
 
     {
       const videoChannel = {
+        name: 'super_channel_name',
         displayName: 'my channel',
         description: 'super channel'
       }
@@ -102,9 +103,10 @@ describe('Test multiple servers', function () {
       }
       await uploadVideo(servers[0].url, servers[0].accessToken, videoAttributes)
 
-      await wait(10000)
+      await waitJobs(servers)
 
       // All servers should have this video
+      let publishedAt: string = null
       for (const server of servers) {
         const isLocal = server.url === 'http://localhost:9001'
         const checkAttributes = {
@@ -120,12 +122,14 @@ describe('Test multiple servers', function () {
             host: 'localhost:9001'
           },
           isLocal,
+          publishedAt,
           duration: 10,
           tags: [ 'tag1p1', 'tag2p1' ],
           privacy: VideoPrivacy.PUBLIC,
           commentsEnabled: true,
           channel: {
-            name: 'my channel',
+            displayName: 'my channel',
+            name: 'super_channel_name',
             description: 'super channel',
             isLocal
           },
@@ -145,6 +149,7 @@ describe('Test multiple servers', function () {
         const video = videos[0]
 
         await completeVideoCheck(server.url, video, checkAttributes)
+        publishedAt = video.publishedAt
       }
     })
 
@@ -174,7 +179,7 @@ describe('Test multiple servers', function () {
       await uploadVideo(servers[1].url, userAccessToken, videoAttributes)
 
       // Transcoding
-      await wait(30000)
+      await waitJobs(servers)
 
       // All servers should have this video
       for (const server of servers) {
@@ -197,7 +202,8 @@ describe('Test multiple servers', function () {
           tags: [ 'tag1p2', 'tag2p2', 'tag3p2' ],
           privacy: VideoPrivacy.PUBLIC,
           channel: {
-            name: 'Default user1 channel',
+            displayName: 'Main user1 channel',
+            name: 'user1_channel',
             description: 'super channel',
             isLocal
           },
@@ -205,19 +211,19 @@ describe('Test multiple servers', function () {
           files: [
             {
               resolution: 240,
-              size: 190000
+              size: 187000
             },
             {
               resolution: 360,
-              size: 280000
+              size: 278000
             },
             {
               resolution: 480,
-              size: 390000
+              size: 383000
             },
             {
               resolution: 720,
-              size: 710000
+              size: 706000
             }
           ],
           thumbnailfile: 'thumbnail',
@@ -263,7 +269,7 @@ describe('Test multiple servers', function () {
       }
       await uploadVideo(servers[2].url, servers[2].accessToken, videoAttributes2)
 
-      await wait(10000)
+      await waitJobs(servers)
 
       // All servers should have this video
       for (const server of servers) {
@@ -303,7 +309,8 @@ describe('Test multiple servers', function () {
           tags: [ 'tag1p3' ],
           privacy: VideoPrivacy.PUBLIC,
           channel: {
-            name: 'Default root channel',
+            displayName: 'Main root channel',
+            name: 'root_channel',
             description: '',
             isLocal
           },
@@ -335,7 +342,8 @@ describe('Test multiple servers', function () {
           tags: [ 'tag2p3', 'tag3p3', 'tag4p3' ],
           privacy: VideoPrivacy.PUBLIC,
           channel: {
-            name: 'Default root channel',
+            displayName: 'Main root channel',
+            name: 'root_channel',
             description: '',
             isLocal
           },
@@ -493,15 +501,15 @@ describe('Test multiple servers', function () {
       await viewVideo(servers[2].url, localVideosServer3[1])
 
       await Promise.all(tasks)
-      await wait(1500)
+      await waitJobs(servers)
 
       await viewVideo(servers[2].url, localVideosServer3[0])
 
-      await wait(1500)
+      await waitJobs(servers)
 
       await viewVideo(servers[2].url, localVideosServer3[0])
 
-      await wait(5000)
+      await waitJobs(servers)
 
       for (const server of servers) {
         const res = await getVideosList(server.url)
@@ -532,7 +540,7 @@ describe('Test multiple servers', function () {
 
       await Promise.all(tasks)
 
-      await wait(10000)
+      await waitJobs(servers)
 
       let baseVideos = null
 
@@ -569,7 +577,7 @@ describe('Test multiple servers', function () {
       await wait(200)
       await rateVideo(servers[2].url, servers[2].accessToken, remoteVideosServer3[0], 'like')
 
-      await wait(10000)
+      await waitJobs(servers)
 
       let baseVideos = null
       for (const server of servers) {
@@ -611,7 +619,7 @@ describe('Test multiple servers', function () {
 
       await updateVideo(servers[2].url, servers[2].accessToken, toRemove[0].id, attributes)
 
-      await wait(5000)
+      await waitJobs(servers)
     })
 
     it('Should have the video 3 updated on each server', async function () {
@@ -643,7 +651,8 @@ describe('Test multiple servers', function () {
           tags: [ 'tag_up_1', 'tag_up_2' ],
           privacy: VideoPrivacy.PUBLIC,
           channel: {
-            name: 'Default root channel',
+            displayName: 'Main root channel',
+            name: 'root_channel',
             description: '',
             isLocal
           },
@@ -667,7 +676,7 @@ describe('Test multiple servers', function () {
       await removeVideo(servers[2].url, servers[2].accessToken, toRemove[0].id)
       await removeVideo(servers[2].url, servers[2].accessToken, toRemove[1].id)
 
-      await wait(5000)
+      await waitJobs(servers)
     })
 
     it('Should not have files of videos 3 and 3-2 on each server', async function () {
@@ -746,7 +755,7 @@ describe('Test multiple servers', function () {
         await addVideoCommentThread(servers[ 2 ].url, servers[ 2 ].accessToken, videoUUID, text)
       }
 
-      await wait(5000)
+      await waitJobs(servers)
 
       {
         const res = await getVideoCommentThreads(servers[1].url, videoUUID, 0, 5)
@@ -756,7 +765,7 @@ describe('Test multiple servers', function () {
         await addVideoCommentReply(servers[ 1 ].url, servers[ 1 ].accessToken, videoUUID, threadId, text)
       }
 
-      await wait(5000)
+      await waitJobs(servers)
 
       {
         const res1 = await getVideoCommentThreads(servers[2].url, videoUUID, 0, 5)
@@ -772,7 +781,7 @@ describe('Test multiple servers', function () {
         await addVideoCommentReply(servers[ 2 ].url, servers[ 2 ].accessToken, videoUUID, childCommentId, text2)
       }
 
-      await wait(5000)
+      await waitJobs(servers)
     })
 
     it('Should have these threads', async function () {
@@ -845,7 +854,7 @@ describe('Test multiple servers', function () {
 
       await deleteVideoComment(servers[2].url, servers[2].accessToken, videoUUID, childOfFirstChild.comment.id)
 
-      await wait(5000)
+      await waitJobs(servers)
     })
 
     it('Should not have this comment anymore', async function () {
@@ -874,7 +883,7 @@ describe('Test multiple servers', function () {
       const threadId = res1.body.data.find(c => c.text === 'my super first comment').id
       await deleteVideoComment(servers[0].url, servers[0].accessToken, videoUUID, threadId)
 
-      await wait(5000)
+      await waitJobs(servers)
     })
 
     it('Should have the thread comments deleted on other servers too', async function () {
@@ -907,7 +916,7 @@ describe('Test multiple servers', function () {
 
       await updateVideo(servers[0].url, servers[0].accessToken, videoUUID, attributes)
 
-      await wait(5000)
+      await waitJobs(servers)
 
       for (const server of servers) {
         const res = await getVideo(server.url, videoUUID)
@@ -921,7 +930,7 @@ describe('Test multiple servers', function () {
 
   describe('With minimum parameters', function () {
     it('Should upload and propagate the video', async function () {
-      this.timeout(50000)
+      this.timeout(60000)
 
       const path = '/api/v1/videos/upload'
 
@@ -931,16 +940,14 @@ describe('Test multiple servers', function () {
         .set('Authorization', 'Bearer ' + servers[1].accessToken)
         .field('name', 'minimum parameters')
         .field('privacy', '1')
-        .field('nsfw', 'false')
         .field('channelId', '1')
-        .field('commentsEnabled', 'true')
 
-      const filePath = join(__dirname, '..', '..', 'api', 'fixtures', 'video_short.webm')
+      const filePath = join(__dirname, '..', '..', 'fixtures', 'video_short.webm')
 
       await req.attach('videofile', filePath)
         .expect(200)
 
-      await wait(25000)
+      await waitJobs(servers)
 
       for (const server of servers) {
         const res = await getVideosList(server.url)
@@ -961,11 +968,12 @@ describe('Test multiple servers', function () {
           },
           isLocal,
           duration: 5,
-          commentsEnabled: true,
+          commentsEnabled: false,
           tags: [ ],
           privacy: VideoPrivacy.PUBLIC,
           channel: {
-            name: 'Default root channel',
+            displayName: 'Main root channel',
+            name: 'root_channel',
             description: '',
             isLocal
           },
@@ -973,19 +981,19 @@ describe('Test multiple servers', function () {
           files: [
             {
               resolution: 720,
-              size: 40315
+              size: 36000
             },
             {
               resolution: 480,
-              size: 22808
+              size: 21000
             },
             {
               resolution: 360,
-              size: 18617
+              size: 17000
             },
             {
               resolution: 240,
-              size: 15217
+              size: 13000
             }
           ]
         }

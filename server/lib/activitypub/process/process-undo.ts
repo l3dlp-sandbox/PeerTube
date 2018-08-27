@@ -8,8 +8,8 @@ import { AccountModel } from '../../../models/account/account'
 import { AccountVideoRateModel } from '../../../models/account/account-video-rate'
 import { ActorModel } from '../../../models/activitypub/actor'
 import { ActorFollowModel } from '../../../models/activitypub/actor-follow'
-import { forwardActivity } from '../send/utils'
-import { getOrCreateAccountAndVideoAndChannel } from '../videos'
+import { forwardVideoRelatedActivity } from '../send/utils'
+import { getOrCreateVideoAndAccountAndChannel } from '../videos'
 import { VideoShareModel } from '../../../models/video/video-share'
 
 async function processUndoActivity (activity: ActivityUndo) {
@@ -18,13 +18,13 @@ async function processUndoActivity (activity: ActivityUndo) {
   const actorUrl = getActorUrl(activity.actor)
 
   if (activityToUndo.type === 'Like') {
-    return processUndoLike(actorUrl, activity)
+    return retryTransactionWrapper(processUndoLike, actorUrl, activity)
   } else if (activityToUndo.type === 'Create' && activityToUndo.object.type === 'Dislike') {
-    return processUndoDislike(actorUrl, activity)
+    return retryTransactionWrapper(processUndoDislike, actorUrl, activity)
   } else if (activityToUndo.type === 'Follow') {
-    return processUndoFollow(actorUrl, activityToUndo)
+    return retryTransactionWrapper(processUndoFollow, actorUrl, activityToUndo)
   } else if (activityToUndo.type === 'Announce') {
-    return processUndoAnnounce(actorUrl, activityToUndo)
+    return retryTransactionWrapper(processUndoAnnounce, actorUrl, activityToUndo)
   }
 
   logger.warn('Unknown activity object type %s -> %s when undo activity.', activityToUndo.type, { activity: activity.id })
@@ -40,19 +40,10 @@ export {
 
 // ---------------------------------------------------------------------------
 
-function processUndoLike (actorUrl: string, activity: ActivityUndo) {
-  const options = {
-    arguments: [ actorUrl, activity ],
-    errorMessage: 'Cannot undo like with many retries.'
-  }
-
-  return retryTransactionWrapper(undoLike, options)
-}
-
-async function undoLike (actorUrl: string, activity: ActivityUndo) {
+async function processUndoLike (actorUrl: string, activity: ActivityUndo) {
   const likeActivity = activity.object as ActivityLike
 
-  const { video } = await getOrCreateAccountAndVideoAndChannel(likeActivity.object)
+  const { video } = await getOrCreateVideoAndAccountAndChannel(likeActivity.object)
 
   return sequelizeTypescript.transaction(async t => {
     const byAccount = await AccountModel.loadByUrl(actorUrl, t)
@@ -67,24 +58,16 @@ async function undoLike (actorUrl: string, activity: ActivityUndo) {
     if (video.isOwned()) {
       // Don't resend the activity to the sender
       const exceptions = [ byAccount.Actor ]
-      await forwardActivity(activity, t, exceptions)
+
+      await forwardVideoRelatedActivity(activity, t, exceptions, video)
     }
   })
 }
 
-function processUndoDislike (actorUrl: string, activity: ActivityUndo) {
-  const options = {
-    arguments: [ actorUrl, activity ],
-    errorMessage: 'Cannot undo dislike with many retries.'
-  }
-
-  return retryTransactionWrapper(undoDislike, options)
-}
-
-async function undoDislike (actorUrl: string, activity: ActivityUndo) {
+async function processUndoDislike (actorUrl: string, activity: ActivityUndo) {
   const dislike = activity.object.object as DislikeObject
 
-  const { video } = await getOrCreateAccountAndVideoAndChannel(dislike.object)
+  const { video } = await getOrCreateVideoAndAccountAndChannel(dislike.object)
 
   return sequelizeTypescript.transaction(async t => {
     const byAccount = await AccountModel.loadByUrl(actorUrl, t)
@@ -99,21 +82,13 @@ async function undoDislike (actorUrl: string, activity: ActivityUndo) {
     if (video.isOwned()) {
       // Don't resend the activity to the sender
       const exceptions = [ byAccount.Actor ]
-      await forwardActivity(activity, t, exceptions)
+
+      await forwardVideoRelatedActivity(activity, t, exceptions, video)
     }
   })
 }
 
 function processUndoFollow (actorUrl: string, followActivity: ActivityFollow) {
-  const options = {
-    arguments: [ actorUrl, followActivity ],
-    errorMessage: 'Cannot undo follow with many retries.'
-  }
-
-  return retryTransactionWrapper(undoFollow, options)
-}
-
-function undoFollow (actorUrl: string, followActivity: ActivityFollow) {
   return sequelizeTypescript.transaction(async t => {
     const follower = await ActorModel.loadByUrl(actorUrl, t)
     const following = await ActorModel.loadByUrl(followActivity.object, t)
@@ -128,21 +103,20 @@ function undoFollow (actorUrl: string, followActivity: ActivityFollow) {
 }
 
 function processUndoAnnounce (actorUrl: string, announceActivity: ActivityAnnounce) {
-  const options = {
-    arguments: [ actorUrl, announceActivity ],
-    errorMessage: 'Cannot undo announce with many retries.'
-  }
-
-  return retryTransactionWrapper(undoAnnounce, options)
-}
-
-function undoAnnounce (actorUrl: string, announceActivity: ActivityAnnounce) {
   return sequelizeTypescript.transaction(async t => {
+    const byAccount = await AccountModel.loadByUrl(actorUrl, t)
+    if (!byAccount) throw new Error('Unknown account ' + actorUrl)
+
     const share = await VideoShareModel.loadByUrl(announceActivity.id, t)
     if (!share) throw new Error(`'Unknown video share ${announceActivity.id}.`)
 
     await share.destroy({ transaction: t })
 
-    return undefined
+    if (share.Video.isOwned()) {
+      // Don't resend the activity to the sender
+      const exceptions = [ byAccount.Actor ]
+
+      await forwardVideoRelatedActivity(announceActivity, t, exceptions, share.Video)
+    }
   })
 }

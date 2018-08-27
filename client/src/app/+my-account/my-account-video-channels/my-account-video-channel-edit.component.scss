@@ -5,10 +5,24 @@
   margin-bottom: 20px;
 }
 
+my-actor-avatar-info {
+  display: block;
+  margin-bottom: 20px;
+}
+
+.input-group {
+  @include peertube-input-group(340px);
+}
+
 input[type=text] {
   @include peertube-input-text(340px);
 
   display: block;
+
+  &#name {
+    width: auto;
+    flex-grow: 1;
+  }
 }
 
 textarea {

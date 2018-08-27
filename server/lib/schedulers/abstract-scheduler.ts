@@ -1,16 +1,18 @@
-import { SCHEDULER_INTERVAL } from '../../initializers'
-
 export abstract class AbstractScheduler {
+
+  protected abstract schedulerIntervalMs: number
 
   private interval: NodeJS.Timer
 
   enable () {
-    this.interval = setInterval(() => this.execute(), SCHEDULER_INTERVAL)
+    if (!this.schedulerIntervalMs) throw new Error('Interval is not correctly set.')
+
+    this.interval = setInterval(() => this.execute(), this.schedulerIntervalMs)
   }
 
   disable () {
     clearInterval(this.interval)
   }
 
-  protected abstract execute ()
+  abstract execute ()
 }

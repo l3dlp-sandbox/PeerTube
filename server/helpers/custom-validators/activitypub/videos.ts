@@ -3,14 +3,16 @@ import { ACTIVITY_PUB, CONSTRAINTS_FIELDS } from '../../../initializers'
 import { peertubeTruncate } from '../../core-utils'
 import { exists, isBooleanValid, isDateValid, isUUIDValid } from '../misc'
 import {
-  isVideoAbuseReasonValid,
   isVideoDurationValid,
   isVideoNameValid,
+  isVideoStateValid,
   isVideoTagValid,
   isVideoTruncatedDescriptionValid,
   isVideoViewsValid
 } from '../videos'
 import { isActivityPubUrlValid, isBaseActivityValid, setValidAttributedTo } from './misc'
+import { VideoState } from '../../../../shared/models/videos'
+import { isVideoAbuseReasonValid } from '../video-abuses'
 
 function sanitizeAndCheckVideoTorrentCreateActivity (activity: any) {
   return isBaseActivityValid(activity, 'Create') &&
@@ -43,12 +45,17 @@ function isActivityPubVideoDurationValid (value: string) {
 }
 
 function sanitizeAndCheckVideoTorrentObject (video: any) {
-  if (video.type !== 'Video') return false
+  if (!video || video.type !== 'Video') return false
 
   if (!setValidRemoteTags(video)) return false
   if (!setValidRemoteVideoUrls(video)) return false
   if (!setRemoteVideoTruncatedContent(video)) return false
   if (!setValidAttributedTo(video)) return false
+  if (!setValidRemoteCaptions(video)) return false
+
+  // Default attributes
+  if (!isVideoStateValid(video.state)) video.state = VideoState.PUBLISHED
+  if (!isBooleanValid(video.waitTranscoding)) video.waitTranscoding = false
 
   return isActivityPubUrlValid(video.id) &&
     isVideoNameValid(video.name) &&
@@ -92,6 +99,18 @@ function setValidRemoteTags (video: any) {
   return true
 }
 
+function setValidRemoteCaptions (video: any) {
+  if (!video.subtitleLanguage) video.subtitleLanguage = []
+
+  if (Array.isArray(video.subtitleLanguage) === false) return false
+
+  video.subtitleLanguage = video.subtitleLanguage.filter(caption => {
+    return isRemoteStringIdentifierValid(caption)
+  })
+
+  return true
+}
+
 function isRemoteNumberIdentifierValid (data: any) {
   return validator.isInt(data.identifier, { min: 0 })
 }
@@ -129,21 +148,25 @@ function setRemoteVideoTruncatedContent (video: any) {
 }
 
 function isRemoteVideoUrlValid (url: any) {
+  // FIXME: Old bug, we used the width to represent the resolution. Remove it in a few realease (currently beta.11)
+  if (url.width && !url.height) url.height = url.width
+
   return url.type === 'Link' &&
     (
       ACTIVITY_PUB.URL_MIME_TYPES.VIDEO.indexOf(url.mimeType) !== -1 &&
       isActivityPubUrlValid(url.href) &&
-      validator.isInt(url.width + '', { min: 0 }) &&
-      validator.isInt(url.size + '', { min: 0 })
+      validator.isInt(url.height + '', { min: 0 }) &&
+      validator.isInt(url.size + '', { min: 0 }) &&
+      (!url.fps || validator.isInt(url.fps + '', { min: 0 }))
     ) ||
     (
       ACTIVITY_PUB.URL_MIME_TYPES.TORRENT.indexOf(url.mimeType) !== -1 &&
       isActivityPubUrlValid(url.href) &&
-      validator.isInt(url.width + '', { min: 0 })
+      validator.isInt(url.height + '', { min: 0 })
     ) ||
     (
       ACTIVITY_PUB.URL_MIME_TYPES.MAGNET.indexOf(url.mimeType) !== -1 &&
       validator.isLength(url.href, { min: 5 }) &&
-      validator.isInt(url.width + '', { min: 0 })
+      validator.isInt(url.height + '', { min: 0 })
     )
 }

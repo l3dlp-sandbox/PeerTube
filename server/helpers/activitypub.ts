@@ -8,22 +8,26 @@ import { signObject } from './peertube-crypto'
 import { pageToStartAndCount } from './core-utils'
 
 function activityPubContextify <T> (data: T) {
-  return Object.assign(data,{
+  return Object.assign(data, {
     '@context': [
       'https://www.w3.org/ns/activitystreams',
       'https://w3id.org/security/v1',
       {
-        'RsaSignature2017': 'https://w3id.org/security#RsaSignature2017',
-        'Hashtag': 'as:Hashtag',
-        'uuid': 'http://schema.org/identifier',
-        'category': 'http://schema.org/category',
-        'licence': 'http://schema.org/license',
-        'sensitive': 'as:sensitive',
-        'language': 'http://schema.org/inLanguage',
-        'views': 'http://schema.org/Number',
-        'size': 'http://schema.org/Number',
-        'commentsEnabled': 'http://schema.org/Boolean',
-        'support': 'http://schema.org/Text'
+        RsaSignature2017: 'https://w3id.org/security#RsaSignature2017',
+        Hashtag: 'as:Hashtag',
+        uuid: 'http://schema.org/identifier',
+        category: 'http://schema.org/category',
+        licence: 'http://schema.org/license',
+        subtitleLanguage: 'http://schema.org/subtitleLanguage',
+        sensitive: 'as:sensitive',
+        language: 'http://schema.org/inLanguage',
+        views: 'http://schema.org/Number',
+        stats: 'http://schema.org/Number',
+        size: 'http://schema.org/Number',
+        fps: 'http://schema.org/Number',
+        commentsEnabled: 'http://schema.org/Boolean',
+        waitTranscoding: 'http://schema.org/Boolean',
+        support: 'http://schema.org/Text'
       },
       {
         likes: {
@@ -64,8 +68,8 @@ async function activityPubCollectionPagination (url: string, handler: ActivityPu
   const { start, count } = pageToStartAndCount(page, ACTIVITY_PUB.COLLECTION_ITEMS_PER_PAGE)
   const result = await handler(start, count)
 
-  let next: string
-  let prev: string
+  let next: string | undefined
+  let prev: string | undefined
 
   // Assert page is a number
   page = parseInt(page, 10)

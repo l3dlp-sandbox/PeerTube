@@ -36,14 +36,24 @@ function setAsyncActorKeys (actor: ActorModel) {
     })
 }
 
-async function getOrCreateActorAndServerAndModel (activityActor: string | ActivityPubActor, recurseIfNeeded = true) {
+async function getOrCreateActorAndServerAndModel (
+  activityActor: string | ActivityPubActor,
+  recurseIfNeeded = true,
+  updateCollections = false
+) {
   const actorUrl = getActorUrl(activityActor)
+  let created = false
 
   let actor = await ActorModel.loadByUrl(actorUrl)
+  // Orphan actor (not associated to an account of channel) so recreate it
+  if (actor && (!actor.Account && !actor.VideoChannel)) {
+    await actor.destroy()
+    actor = null
+  }
 
   // We don't have this actor in our database, fetch it on remote
   if (!actor) {
-    const result = await fetchRemoteActor(actorUrl)
+    const { result } = await fetchRemoteActor(actorUrl)
     if (result === undefined) throw new Error('Cannot fetch remote actor.')
 
     // Create the attributed to actor
@@ -62,18 +72,22 @@ async function getOrCreateActorAndServerAndModel (activityActor: string | Activi
       }
     }
 
-    const options = {
-      arguments: [ result, ownerActor ],
-      errorMessage: 'Cannot save actor and server with many retries.'
-    }
-    actor = await retryTransactionWrapper(saveActorAndServerAndModelIfNotExist, options)
+    actor = await retryTransactionWrapper(saveActorAndServerAndModelIfNotExist, result, ownerActor)
+    created = true
   }
 
-  const options = {
-    arguments: [ actor ],
-    errorMessage: 'Cannot refresh actor if needed with many retries.'
+  if (actor.Account) actor.Account.Actor = actor
+  if (actor.VideoChannel) actor.VideoChannel.Actor = actor
+
+  const { actor: actorRefreshed, refreshed } = await retryTransactionWrapper(refreshActorIfNeeded, actor)
+  if (!actorRefreshed) throw new Error('Actor ' + actorRefreshed.url + ' does not exist anymore.')
+
+  if ((created === true || refreshed === true) && updateCollections === true) {
+    const payload = { uri: actor.outboxUrl, type: 'activity' as 'activity' }
+    await JobQueue.Instance.createJob({ type: 'activitypub-http-fetcher', payload })
   }
-  return retryTransactionWrapper(refreshActorIfNeeded, options)
+
+  return actorRefreshed
 }
 
 function buildActorInstance (type: ActivityPubActorType, url: string, preferredUsername: string, uuid?: string) {
@@ -180,7 +194,8 @@ async function addFetchOutboxJob (actor: ActorModel) {
   }
 
   const payload = {
-    uris: [ actor.outboxUrl ]
+    uri: actor.outboxUrl,
+    type: 'activity' as 'activity'
   }
 
   return JobQueue.Instance.createJob({ type: 'activitypub-http-fetcher', payload })
@@ -251,6 +266,7 @@ function saveActorAndServerAndModelIfNotExist (
     } else if (actorCreated.type === 'Group') { // Video channel
       actorCreated.VideoChannel = await saveVideoChannel(actorCreated, result, ownerActor, t)
       actorCreated.VideoChannel.Actor = actorCreated
+      actorCreated.VideoChannel.Account = ownerActor.Account
     }
 
     return actorCreated
@@ -265,7 +281,7 @@ type FetchRemoteActorResult = {
   avatarName?: string
   attributedTo: ActivityPubAttributedTo[]
 }
-async function fetchRemoteActor (actorUrl: string): Promise<FetchRemoteActorResult> {
+async function fetchRemoteActor (actorUrl: string): Promise<{ statusCode?: number, result: FetchRemoteActorResult }> {
   const options = {
     uri: actorUrl,
     method: 'GET',
@@ -282,7 +298,7 @@ async function fetchRemoteActor (actorUrl: string): Promise<FetchRemoteActorResu
 
   if (isActorObjectValid(actorJSON) === false) {
     logger.debug('Remote actor JSON is not valid.', { actorJSON: actorJSON })
-    return undefined
+    return { result: undefined, statusCode: requestResult.response.statusCode }
   }
 
   const followersCount = await fetchActorTotalItems(actorJSON.followers)
@@ -308,12 +324,15 @@ async function fetchRemoteActor (actorUrl: string): Promise<FetchRemoteActorResu
 
   const name = actorJSON.name || actorJSON.preferredUsername
   return {
-    actor,
-    name,
-    avatarName,
-    summary: actorJSON.summary,
-    support: actorJSON.support,
-    attributedTo: actorJSON.attributedTo
+    statusCode: requestResult.response.statusCode,
+    result: {
+      actor,
+      name,
+      avatarName,
+      summary: actorJSON.summary,
+      support: actorJSON.support,
+      attributedTo: actorJSON.attributedTo
+    }
   }
 }
 
@@ -351,15 +370,22 @@ async function saveVideoChannel (actor: ActorModel, result: FetchRemoteActorResu
   return videoChannelCreated
 }
 
-async function refreshActorIfNeeded (actor: ActorModel): Promise<ActorModel> {
-  if (!actor.isOutdated()) return actor
+async function refreshActorIfNeeded (actor: ActorModel): Promise<{ actor: ActorModel, refreshed: boolean }> {
+  if (!actor.isOutdated()) return { actor, refreshed: false }
 
   try {
-    const actorUrl = await getUrlFromWebfinger(actor.preferredUsername, actor.getHost())
-    const result = await fetchRemoteActor(actorUrl)
+    const actorUrl = await getUrlFromWebfinger(actor.preferredUsername + '@' + actor.getHost())
+    const { result, statusCode } = await fetchRemoteActor(actorUrl)
+
+    if (statusCode === 404) {
+      logger.info('Deleting actor %s because there is a 404 in refresh actor.', actor.url)
+      actor.Account ? actor.Account.destroy() : actor.VideoChannel.destroy()
+      return { actor: undefined, refreshed: false }
+    }
+
     if (result === undefined) {
       logger.warn('Cannot fetch remote actor in refresh actor.')
-      return actor
+      return { actor, refreshed: false }
     }
 
     return sequelizeTypescript.transaction(async t => {
@@ -388,10 +414,10 @@ async function refreshActorIfNeeded (actor: ActorModel): Promise<ActorModel> {
         await actor.VideoChannel.save({ transaction: t })
       }
 
-      return actor
+      return { refreshed: true, actor }
     })
   } catch (err) {
     logger.warn('Cannot refresh actor.', { err })
-    return actor
+    return { actor, refreshed: false }
   }
 }

@@ -5,13 +5,13 @@ import { ActorModel } from '../../../models/activitypub/actor'
 import { VideoModel } from '../../../models/video/video'
 import { VideoShareModel } from '../../../models/video/video-share'
 import { getOrCreateActorAndServerAndModel } from '../actor'
-import { forwardActivity } from '../send/utils'
-import { getOrCreateAccountAndVideoAndChannel } from '../videos'
+import { forwardVideoRelatedActivity } from '../send/utils'
+import { getOrCreateVideoAndAccountAndChannel } from '../videos'
 
 async function processAnnounceActivity (activity: ActivityAnnounce) {
   const actorAnnouncer = await getOrCreateActorAndServerAndModel(activity.actor)
 
-  return processVideoShare(actorAnnouncer, activity)
+  return retryTransactionWrapper(processVideoShare, actorAnnouncer, activity)
 }
 
 // ---------------------------------------------------------------------------
@@ -22,21 +22,10 @@ export {
 
 // ---------------------------------------------------------------------------
 
-function processVideoShare (actorAnnouncer: ActorModel, activity: ActivityAnnounce) {
-  const options = {
-    arguments: [ actorAnnouncer, activity ],
-    errorMessage: 'Cannot share the video activity with many retries.'
-  }
-
-  return retryTransactionWrapper(shareVideo, options)
-}
-
-async function shareVideo (actorAnnouncer: ActorModel, activity: ActivityAnnounce) {
+async function processVideoShare (actorAnnouncer: ActorModel, activity: ActivityAnnounce) {
   const objectUri = typeof activity.object === 'string' ? activity.object : activity.object.id
-  let video: VideoModel
 
-  const res = await getOrCreateAccountAndVideoAndChannel(objectUri)
-  video = res.video
+  const { video } = await getOrCreateVideoAndAccountAndChannel(objectUri)
 
   return sequelizeTypescript.transaction(async t => {
     // Add share entry
@@ -58,7 +47,8 @@ async function shareVideo (actorAnnouncer: ActorModel, activity: ActivityAnnounc
     if (video.isOwned() && created === true) {
       // Don't resend the activity to the sender
       const exceptions = [ actorAnnouncer ]
-      await forwardActivity(activity, t, exceptions)
+
+      await forwardVideoRelatedActivity(activity, t, exceptions, video)
     }
 
     return undefined

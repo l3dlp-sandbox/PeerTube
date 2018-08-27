@@ -42,6 +42,19 @@ enum ScopeNames {
   FULL = 'FULL'
 }
 
+export const unusedActorAttributesForAPI = [
+  'publicKey',
+  'privateKey',
+  'inboxUrl',
+  'outboxUrl',
+  'sharedInboxUrl',
+  'followersUrl',
+  'followingUrl',
+  'url',
+  'createdAt',
+  'updatedAt'
+]
+
 @DefaultScope({
   include: [
     {
@@ -80,7 +93,8 @@ enum ScopeNames {
   tableName: 'actor',
   indexes: [
     {
-      fields: [ 'url' ]
+      fields: [ 'url' ],
+      unique: true
     },
     {
       fields: [ 'preferredUsername', 'serverId' ],
@@ -88,6 +102,22 @@ enum ScopeNames {
     },
     {
       fields: [ 'inboxUrl', 'sharedInboxUrl' ]
+    },
+    {
+      fields: [ 'sharedInboxUrl' ]
+    },
+    {
+      fields: [ 'serverId' ]
+    },
+    {
+      fields: [ 'avatarId' ]
+    },
+    {
+      fields: [ 'uuid' ],
+      unique: true
+    },
+    {
+      fields: [ 'followersUrl' ]
     }
   ]
 })
@@ -243,12 +273,13 @@ export class ActorModel extends Model<ActorModel> {
     return ActorModel.scope(ScopeNames.FULL).findAll(query)
   }
 
-  static loadLocalByName (preferredUsername: string) {
+  static loadLocalByName (preferredUsername: string, transaction?: Sequelize.Transaction) {
     const query = {
       where: {
         preferredUsername,
         serverId: null
-      }
+      },
+      transaction
     }
 
     return ActorModel.scope(ScopeNames.FULL).findOne(query)
@@ -292,45 +323,6 @@ export class ActorModel extends Model<ActorModel> {
         id
       }
     })
-  }
-
-  static async getActorsFollowerSharedInboxUrls (actors: ActorModel[], t: Sequelize.Transaction) {
-    const query = {
-      // attribute: [],
-      where: {
-        id: {
-          [Sequelize.Op.in]: actors.map(a => a.id)
-        }
-      },
-      include: [
-        {
-          // attributes: [ ],
-          model: ActorFollowModel.unscoped(),
-          required: true,
-          as: 'ActorFollowers',
-          where: {
-            state: 'accepted'
-          },
-          include: [
-            {
-              attributes: [ 'sharedInboxUrl' ],
-              model: ActorModel.unscoped(),
-              as: 'ActorFollower',
-              required: true
-            }
-          ]
-        }
-      ],
-      transaction: t
-    }
-
-    const hash: { [ id: number ]: string[] } = {}
-    const res = await ActorModel.findAll(query)
-    for (const actor of res) {
-      hash[actor.id] = actor.ActorFollowers.map(follow => follow.ActorFollower.sharedInboxUrl)
-    }
-
-    return hash
   }
 
   toFormattedJSON () {
@@ -438,6 +430,10 @@ export class ActorModel extends Model<ActorModel> {
 
   getWebfingerUrl () {
     return 'acct:' + this.preferredUsername + '@' + this.getHost()
+  }
+
+  getIdentifier () {
+    return this.Server ? `${this.preferredUsername}@${this.Server.host}` : this.preferredUsername
   }
 
   getHost () {

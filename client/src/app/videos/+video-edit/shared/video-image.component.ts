@@ -23,7 +23,7 @@ export class VideoImageComponent implements ControlValueAccessor {
 
   imageSrc: SafeResourceUrl
 
-  private file: Blob
+  private file: File
 
   constructor (
     private sanitizer: DomSanitizer,
@@ -31,21 +31,18 @@ export class VideoImageComponent implements ControlValueAccessor {
   ) {}
 
   get videoImageExtensions () {
-    return this.serverService.getConfig().video.image.extensions.join(',')
+    return this.serverService.getConfig().video.image.extensions
   }
 
   get maxVideoImageSize () {
     return this.serverService.getConfig().video.image.size.max
   }
 
-  fileChange (event: any) {
-    if (event.target.files && event.target.files.length) {
-      const [ file ] = event.target.files
+  onFileChanged (file: File) {
+    this.file = file
 
-      this.file = file
-      this.propagateChange(this.file)
-      this.updatePreview()
-    }
+    this.propagateChange(this.file)
+    this.updatePreview()
   }
 
   propagateChange = (_: any) => { /* empty */ }

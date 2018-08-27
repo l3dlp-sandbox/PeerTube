@@ -1,18 +1,18 @@
 @import '_variables';
 @import '_mixins';
 
-$icon-font-path: '../../node_modules/bootstrap-sass/assets/fonts/bootstrap/';
+$icon-font-path: '../../node_modules/@neos21/bootstrap3-glyphicons/assets/fonts/';
 @import '_bootstrap';
 
-$FontPathSourceSansPro: '../../node_modules/npm-font-source-sans-pro/fonts';
-@import '~npm-font-source-sans-pro/source-sans-pro';
+@import '_fonts';
 
-@import '~primeng/resources/themes/bootstrap/theme.css';
-@import '~primeng/resources/primeng.css';
 @import '~video.js/dist/video-js.css';
 
-@import './video-js-custom';
+$assets-path: '../assets/';
+@import './player/player';
 @import './loading-bar';
+
+@import './primeng-custom';
 
 [hidden] {
   display: none !important;
@@ -22,6 +22,7 @@ body {
   font-family: $main-fonts;
   font-weight: $font-regular;
   color: #000;
+  font-size: 14px;
 }
 
 #incompatible-browser {
@@ -39,6 +40,10 @@ strong {
 input.readonly {
   /* Force blank on readonly inputs */
   background-color: #fff !important;
+}
+
+input, textarea {
+  outline: none;
 }
 
 label {
@@ -62,10 +67,12 @@ label {
 
 .main-col {
   margin-left: $menu-width;
+  width: auto;
 
   .margin-content {
     margin-left: $not-expanded-horizontal-margins;
     margin-right: $not-expanded-horizontal-margins;
+    flex-grow: 1;
   }
 
   .sub-menu {
@@ -76,6 +83,7 @@ label {
     display: flex;
     align-items: center;
     padding-left: $not-expanded-horizontal-margins;
+    padding-right: $not-expanded-horizontal-margins;
   }
 
   // Override some properties if the main content is expanded (no menu on the left)
@@ -89,6 +97,7 @@ label {
 
     .sub-menu {
       padding-left: $expanded-horizontal-margins;
+      padding-right: $expanded-horizontal-margins;
     }
   }
 }
@@ -125,6 +134,20 @@ label {
   .form-sub-title {
     flex-grow: 1;
   }
+
+  .admin-sub-nav a {
+    @include disable-default-a-behaviour;
+
+    font-size: 16px;
+    color: #000;
+    padding: 5px 15px;
+    border-radius: 0.25rem;
+
+    &.active {
+      font-weight: $font-semibold;
+      background-color: #f0f0f0;
+    }
+  }
 }
 
 .form-sub-title {
@@ -140,126 +163,6 @@ label {
 @keyframes spin {
   from { transform: scale(1) rotate(0deg);}
   to { transform: scale(1) rotate(360deg);}
-}
-
-// ngprime data table customizations
-p-table {
-  font-size: 15px !important;
-
-  td {
-    border: 1px solid #E5E5E5 !important;
-    padding-left: 15px !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-  }
-
-  tr {
-    background-color: #fff !important;
-    height: 46px;
-  }
-
-  .ui-table-tbody {
-    tr {
-      &:hover {
-        background-color: #f0f0f0 !important;
-      }
-
-      &:not(:hover) {
-        .action-cell * {
-          display: none !important;
-        }
-      }
-
-      &:first-child td {
-        border-top: none !important;
-      }
-
-      &:last-child td {
-        border-bottom: none !important;
-      }
-    }
-
-    .expander {
-      cursor: pointer;
-      position: relative;
-      top: 1px;
-    }
-  }
-
-  th {
-    border: none !important;
-    border-bottom: 1px solid #f0f0f0 !important;
-    text-align: left !important;
-    padding: 5px 0 5px 15px !important;
-    font-weight: $font-semibold !important;
-    color: #000 !important;
-
-    &.ui-sortable-column:hover {
-      background-color: #f0f0f0 !important;
-      border: 1px solid #f0f0f0 !important;
-      border-width: 0 1px !important;
-
-      &:first-child {
-        border-width: 0 1px 0 0 !important;
-      }
-    }
-
-    &.ui-state-highlight {
-      background-color: #fff !important;
-
-      .fa {
-        @extend .glyphicon;
-        font-size: 11px;
-
-        &.fa-sort-asc {
-          @extend .glyphicon-triangle-top;
-        }
-
-        &.fa-sort-desc {
-          @extend .glyphicon-triangle-bottom;
-        }
-      }
-    }
-  }
-
-  .action-cell {
-    width: 250px !important;
-    padding: 0 !important;
-    text-align: center;
-
-    my-edit-button + my-delete-button {
-      margin-left: 5px;
-    }
-  }
-
-  p-paginator {
-    .ui-paginator-bottom {
-      position: relative;
-      border: none !important;
-      border: 1px solid #f0f0f0 !important;
-      height: 40px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-
-      a {
-        color: #000 !important;
-        font-weight: $font-semibold !important;
-        margin-right: 20px !important;
-        outline: 0 !important;
-        border-radius: 3px !important;
-        padding: 5px 2px !important;
-
-        &.ui-state-active {
-          &, &:hover, &:active, &:focus {
-            color: #fff !important;
-            background-color: $orange-color !important;
-          }
-        }
-      }
-    }
-  }
 }
 
 // Bootstrap customizations
@@ -291,9 +194,13 @@ p-table {
       @include icon(24px);
 
       position: relative;
-      right: -1px;
+      top: 3px;
       float: right;
       background-image: url('../assets/images/global/cross.svg');
+
+      margin: 0;
+      padding: 0;
+      opacity: 1;
     }
   }
 
@@ -317,45 +224,35 @@ p-table {
   }
 }
 
-tabset:not(.bootstrap) {
-  .nav {
-    font-size: 16px !important;
-    border: none !important;
+// Nav customizations
+.nav .nav-link {
+  display: flex !important;
+  align-items: center;
+  height: 30px !important;
+  padding: 10px 15px !important;
+}
 
-    .nav-item .nav-link {
-      margin-right: 30px;
-      padding: 0;
-      border-radius: 3px;
-      border: none !important;
+.nav.nav-pills {
+  font-size: 16px !important;
 
-      .tab-link {
-        display: flex !important;
-        align-items: center;
-        min-height: 30px !important;
-        padding: 0 15px;
-      }
+  .nav-link.active {
+    font-weight: $font-semibold !important;
+  }
 
-      &, & a {
-        color: #000 !important;
-        @include disable-default-a-behaviour;
-      }
+  a {
+    @include disable-default-a-behaviour;
 
-      &.active, &:hover {
-        background-color: #F0F0F0;
-      }
-
-      &.active {
-        font-weight: $font-semibold !important;
-      }
-    }
+    color: #000;
   }
 }
 
-tabset.bootstrap {
-  .nav-item .nav-link {
+ngb-tabset.bootstrap {
+
+  .nav-link {
     &, & a {
-      color: #000;
       @include disable-default-a-behaviour;
+
+      color: #000 !important;
     }
   }
 }
@@ -399,16 +296,18 @@ table {
 
       .sub-menu {
         padding-left: 50px;
+
+        .title-page {
+          font-size: 15px;
+        }
       }
     }
   }
 }
 
-// On small screen, menu is absolute
 @media screen and (max-width: 600px) {
-  .title-menu-left {
+  .menu-wrapper {
     width: 100% !important;
-    position: absolute !important;
     z-index: 10000;
   }
 
@@ -423,6 +322,7 @@ table {
 
       .sub-menu {
         padding-left: 15px;
+        padding-right: 15px;
         margin-bottom: 10px;
       }
 
@@ -430,9 +330,5 @@ table {
         width: 100% !important;
       }
     }
-  }
-
-  bs-dropdown-container {
-    z-index: 10000;
   }
 }

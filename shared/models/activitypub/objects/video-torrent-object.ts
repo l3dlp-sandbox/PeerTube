@@ -5,6 +5,7 @@ import {
   ActivityUrlObject
 } from './common-objects'
 import { ActivityPubOrderedCollection } from '../activitypub-ordered-collection'
+import { VideoState } from '../../videos'
 
 export interface VideoTorrentObject {
   type: 'Video'
@@ -16,9 +17,12 @@ export interface VideoTorrentObject {
   category: ActivityIdentifierObject
   licence: ActivityIdentifierObject
   language: ActivityIdentifierObject
+  subtitleLanguage: ActivityIdentifierObject[]
   views: number
   sensitive: boolean
   commentsEnabled: boolean
+  waitTranscoding: boolean
+  state: VideoState
   published: string
   updated: string
   mediaType: 'text/markdown'

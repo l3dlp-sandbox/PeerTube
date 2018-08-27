@@ -1,8 +1,10 @@
 import { Component, OnInit } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { GuardsCheckStart, Router, NavigationEnd } from '@angular/router'
+import { GuardsCheckStart, NavigationEnd, Router } from '@angular/router'
 import { AuthService, RedirectService, ServerService } from '@app/core'
-import { isInSmallView } from '@app/shared/misc/utils'
+import { is18nPath } from '../../../shared/models/i18n'
+import { ScreenService } from '@app/shared/misc/screen.service'
+import { skip } from 'rxjs/operators'
 
 @Component({
   selector: 'my-app',
@@ -32,8 +34,9 @@ export class AppComponent implements OnInit {
     private authService: AuthService,
     private serverService: ServerService,
     private domSanitizer: DomSanitizer,
-    private redirectService: RedirectService
-  ) {}
+    private redirectService: RedirectService,
+    private screenService: ScreenService
+  ) { }
 
   get serverVersion () {
     return this.serverService.getConfig().serverVersion
@@ -53,8 +56,8 @@ export class AppComponent implements OnInit {
     this.router.events.subscribe(e => {
       if (e instanceof NavigationEnd) {
         const pathname = window.location.pathname
-        if (!pathname || pathname === '/') {
-          this.redirectService.redirectToHomepage()
+        if (!pathname || pathname === '/' || is18nPath(pathname)) {
+          this.redirectService.redirectToHomepage(true)
         }
       }
     })
@@ -74,38 +77,49 @@ export class AppComponent implements OnInit {
     this.serverService.loadVideoPrivacies()
 
     // Do not display menu on small screens
-    if (isInSmallView()) {
+    if (this.screenService.isInSmallView()) {
       this.isMenuDisplayed = false
     }
 
     this.router.events.subscribe(
       e => {
         // User clicked on a link in the menu, change the page
-        if (e instanceof GuardsCheckStart && isInSmallView()) {
+        if (e instanceof GuardsCheckStart && this.screenService.isInSmallView()) {
           this.isMenuDisplayed = false
         }
       }
     )
 
+    // Inject JS
     this.serverService.configLoaded
-      .subscribe(() => {
-        const config = this.serverService.getConfig()
+        .subscribe(() => {
+          const config = this.serverService.getConfig()
 
-        // We test customCSS if the admin removed the css
-        if (this.customCSS || config.instance.customizations.css) {
-          const styleTag = '<style>' + config.instance.customizations.css + '</style>'
-          this.customCSS = this.domSanitizer.bypassSecurityTrustHtml(styleTag)
-        }
-
-        if (config.instance.customizations.javascript) {
-          try {
-            // tslint:disable:no-eval
-            eval(config.instance.customizations.javascript)
-          } catch (err) {
-            console.error('Cannot eval custom JavaScript.', err)
+          if (config.instance.customizations.javascript) {
+            try {
+              // tslint:disable:no-eval
+              eval(config.instance.customizations.javascript)
+            } catch (err) {
+              console.error('Cannot eval custom JavaScript.', err)
+            }
           }
-        }
-      })
+        })
+
+    // Inject CSS if modified (admin config settings)
+    this.serverService.configLoaded
+        .pipe(skip(1)) // We only want to subscribe to reloads, because the CSS is already injected by the server
+        .subscribe(() => {
+          const headStyle = document.querySelector('style.custom-css-style')
+          if (headStyle) headStyle.parentNode.removeChild(headStyle)
+
+          const config = this.serverService.getConfig()
+
+          // We test customCSS if the admin removed the css
+          if (this.customCSS || config.instance.customizations.css) {
+            const styleTag = '<style>' + config.instance.customizations.css + '</style>'
+            this.customCSS = this.domSanitizer.bypassSecurityTrustHtml(styleTag)
+          }
+        })
   }
 
   isUserLoggedIn () {
@@ -113,7 +127,6 @@ export class AppComponent implements OnInit {
   }
 
   toggleMenu () {
-    window.scrollTo(0, 0)
     this.isMenuDisplayed = !this.isMenuDisplayed
   }
 }

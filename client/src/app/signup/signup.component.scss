@@ -8,16 +8,24 @@
   .initial-user-quota-label {
     font-weight: $font-semibold;
   }
-
-  my-help {
-    margin-left: 5px;
-  }
 }
 
+.form-group-terms {
+  margin: 30px 0;
+}
+
+.input-group {
+  @include peertube-input-group(340px);
+}
 
 input:not([type=submit]) {
   @include peertube-input-text(340px);
   display: block;
+
+  &#username {
+    width: auto;
+    flex-grow: 1;
+  }
 }
 
 input[type=submit] {

@@ -81,7 +81,7 @@ function objectToFormData (obj: any, form?: FormData, namespace?: string) {
     }
 
     if (obj[key] !== null && typeof obj[ key ] === 'object' && !(obj[ key ] instanceof File)) {
-      objectToFormData(obj[ key ], fd, key)
+      objectToFormData(obj[ key ], fd, formKey)
     } else {
       fd.append(formKey, obj[ key ])
     }
@@ -96,27 +96,31 @@ function lineFeedToHtml (obj: object, keyToNormalize: string) {
   })
 }
 
-// Try to cache a little bit window.innerWidth
-let windowInnerWidth = window.innerWidth
-// setInterval(() => windowInnerWidth = window.innerWidth, 500)
-
-function isInSmallView () {
-  return windowInnerWidth < 600
+function removeElementFromArray <T> (arr: T[], elem: T) {
+  const index = arr.indexOf(elem)
+  if (index !== -1) arr.splice(index, 1)
 }
 
-function isInMobileView () {
-  return windowInnerWidth < 500
+function sortBy (obj: any[], key1: string, key2?: string) {
+  return obj.sort((a, b) => {
+    const elem1 = key2 ? a[key1][key2] : a[key1]
+    const elem2 = key2 ? b[key1][key2] : b[key1]
+
+    if (elem1 < elem2) return -1
+    if (elem1 === elem2) return 0
+    return 1
+  })
 }
 
 export {
+  sortBy,
   objectToUrlEncoded,
   getParameterByName,
   populateAsyncUserVideoChannels,
   getAbsoluteAPIUrl,
   dateToHuman,
-  isInSmallView,
-  isInMobileView,
   immutableAssign,
   objectToFormData,
-  lineFeedToHtml
+  lineFeedToHtml,
+  removeElementFromArray
 }

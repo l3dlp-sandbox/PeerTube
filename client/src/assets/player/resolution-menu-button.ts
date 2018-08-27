@@ -8,13 +8,11 @@ class ResolutionMenuButton extends MenuButton {
   label: HTMLElement
 
   constructor (player: videojs.Player, options) {
-    options.label = 'Quality'
     super(player, options)
-
-    this.controlText_ = 'Quality'
     this.player = player
 
     player.peertube().on('videoFileUpdate', () => this.updateLabel())
+    player.peertube().on('autoResolutionUpdate', () => this.updateLabel())
   }
 
   createEl () {
@@ -37,11 +35,16 @@ class ResolutionMenuButton extends MenuButton {
   createMenu () {
     const menu = new Menu(this.player_)
     for (const videoFile of this.player_.peertube().videoFiles) {
+      let label = videoFile.resolution.label
+      if (videoFile.fps && videoFile.fps >= 50) {
+        label += videoFile.fps
+      }
+
       menu.addChild(new ResolutionMenuItem(
         this.player_,
         {
           id: videoFile.resolution.id,
-          label: videoFile.resolution.label,
+          label,
           src: videoFile.magnetUri
         })
       )
@@ -51,7 +54,7 @@ class ResolutionMenuButton extends MenuButton {
       this.player_,
       {
         id: -1,
-        label: 'Auto',
+        label: this.player_.localize('Auto'),
         src: null
       }
     ))
@@ -77,4 +80,6 @@ class ResolutionMenuButton extends MenuButton {
     return this.player_.peertube().getCurrentResolutionLabel()
   }
 }
+ResolutionMenuButton.prototype.controlText_ = 'Quality'
+
 MenuButton.registerComponent('ResolutionMenuButton', ResolutionMenuButton)

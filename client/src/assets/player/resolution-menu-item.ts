@@ -1,3 +1,4 @@
+import * as videojs from 'video.js'
 import { VideoJSComponentInterface, videojsUntyped } from './peertube-videojs-typings'
 
 const MenuItem: VideoJSComponentInterface = videojsUntyped.getComponent('MenuItem')
@@ -18,6 +19,8 @@ class ResolutionMenuItem extends MenuItem {
   }
 
   handleClick (event) {
+    if (this.id === -1 && this.player_.peertube().isAutoResolutionForbidden()) return
+
     super.handleClick(event)
 
     // Auto resolution
@@ -31,6 +34,15 @@ class ResolutionMenuItem extends MenuItem {
   }
 
   updateSelection () {
+    // Check if auto resolution is forbidden or not
+    if (this.id === -1) {
+      if (this.player_.peertube().isAutoResolutionForbidden()) {
+        this.addClass('disabled')
+      } else {
+        this.removeClass('disabled')
+      }
+    }
+
     if (this.player_.peertube().isAutoResolutionOn()) {
       this.selected(this.id === -1)
       return

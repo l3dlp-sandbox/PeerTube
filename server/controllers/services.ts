@@ -29,8 +29,8 @@ function generateOEmbed (req: express.Request, res: express.Response, next: expr
   const maxHeight = parseInt(req.query.maxheight, 10)
   const maxWidth = parseInt(req.query.maxwidth, 10)
 
-  const embedUrl = webserverUrl + video.getEmbedPath()
-  let thumbnailUrl = webserverUrl + video.getPreviewPath()
+  const embedUrl = webserverUrl + video.getEmbedStaticPath()
+  let thumbnailUrl = webserverUrl + video.getPreviewStaticPath()
   let embedWidth = EMBED_SIZE.width
   let embedHeight = EMBED_SIZE.height
 
@@ -45,7 +45,8 @@ function generateOEmbed (req: express.Request, res: express.Response, next: expr
     thumbnailUrl = undefined
   }
 
-  const html = `<iframe width="${embedWidth}" height="${embedHeight}" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>`
+  const html = `<iframe width="${embedWidth}" height="${embedHeight}" sandbox="allow-same-origin allow-scripts" ` +
+    `src="${embedUrl}" frameborder="0" allowfullscreen></iframe>`
 
   const json: any = {
     type: 'video',
@@ -55,6 +56,7 @@ function generateOEmbed (req: express.Request, res: express.Response, next: expr
     height: embedHeight,
     title: video.name,
     author_name: video.VideoChannel.Account.name,
+    author_url: video.VideoChannel.Account.Actor.url,
     provider_name: 'PeerTube',
     provider_url: webserverUrl
   }

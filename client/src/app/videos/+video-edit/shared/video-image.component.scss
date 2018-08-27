@@ -6,14 +6,6 @@
   display: flex;
   align-items: center;
 
-  .button-file {
-    @include peertube-button-file(190px);
-  }
-
-  .image-constraints {
-    font-size: 13px;
-  }
-
   .preview {
     border: 2px solid grey;
     border-radius: 4px;

@@ -6,8 +6,8 @@ import { CONFIG, ROUTE_CACHE_LIFETIME } from '../../initializers'
 import { buildVideoAnnounce } from '../../lib/activitypub/send'
 import { audiencify, getAudience } from '../../lib/activitypub/audience'
 import { createActivityData } from '../../lib/activitypub/send/send-create'
-import { asyncMiddleware, executeIfActivityPub, localAccountValidator } from '../../middlewares'
-import { videoChannelsGetValidator, videosGetValidator, videosShareValidator } from '../../middlewares/validators'
+import { asyncMiddleware, executeIfActivityPub, localAccountValidator, localVideoChannelValidator } from '../../middlewares'
+import { videosGetValidator, videosShareValidator } from '../../middlewares/validators'
 import { videoCommentGetValidator } from '../../middlewares/validators/video-comments'
 import { AccountModel } from '../../models/account/account'
 import { ActorModel } from '../../models/activitypub/actor'
@@ -25,6 +25,7 @@ import {
   getVideoLikesActivityPubUrl,
   getVideoSharesActivityPubUrl
 } from '../../lib/activitypub'
+import { VideoCaptionModel } from '../../models/video/video-caption'
 
 const activityPubClientRouter = express.Router()
 
@@ -79,16 +80,16 @@ activityPubClientRouter.get('/videos/watch/:videoId/comments/:commentId/activity
   executeIfActivityPub(asyncMiddleware(videoCommentController))
 )
 
-activityPubClientRouter.get('/video-channels/:id',
-  executeIfActivityPub(asyncMiddleware(videoChannelsGetValidator)),
+activityPubClientRouter.get('/video-channels/:name',
+  executeIfActivityPub(asyncMiddleware(localVideoChannelValidator)),
   executeIfActivityPub(asyncMiddleware(videoChannelController))
 )
-activityPubClientRouter.get('/video-channels/:id/followers',
-  executeIfActivityPub(asyncMiddleware(videoChannelsGetValidator)),
+activityPubClientRouter.get('/video-channels/:name/followers',
+  executeIfActivityPub(asyncMiddleware(localVideoChannelValidator)),
   executeIfActivityPub(asyncMiddleware(videoChannelFollowersController))
 )
-activityPubClientRouter.get('/video-channels/:id/following',
-  executeIfActivityPub(asyncMiddleware(videoChannelsGetValidator)),
+activityPubClientRouter.get('/video-channels/:name/following',
+  executeIfActivityPub(asyncMiddleware(localVideoChannelValidator)),
   executeIfActivityPub(asyncMiddleware(videoChannelFollowingController))
 )
 
@@ -123,11 +124,14 @@ async function accountFollowingController (req: express.Request, res: express.Re
 async function videoController (req: express.Request, res: express.Response, next: express.NextFunction) {
   const video: VideoModel = res.locals.video
 
-  const audience = await getAudience(video.VideoChannel.Account.Actor, undefined, video.privacy === VideoPrivacy.PUBLIC)
+  // We need captions to render AP object
+  video.VideoCaptions = await VideoCaptionModel.listVideoCaptions(video.id)
+
+  const audience = getAudience(video.VideoChannel.Account.Actor, video.privacy === VideoPrivacy.PUBLIC)
   const videoObject = audiencify(video.toActivityPubObject(), audience)
 
   if (req.path.endsWith('/activity')) {
-    const data = await createActivityData(video.url, video.VideoChannel.Account.Actor, videoObject, undefined, audience)
+    const data = createActivityData(video.url, video.VideoChannel.Account.Actor, videoObject, audience)
     return activityPubResponse(activityPubContextify(data), res)
   }
 
@@ -210,12 +214,12 @@ async function videoCommentController (req: express.Request, res: express.Respon
 
   const threadParentComments = await VideoCommentModel.listThreadParentComments(videoComment, undefined)
   const isPublic = true // Comments are always public
-  const audience = await getAudience(videoComment.Account.Actor, undefined, isPublic)
+  const audience = getAudience(videoComment.Account.Actor, isPublic)
 
   const videoCommentObject = audiencify(videoComment.toActivityPubObject(threadParentComments), audience)
 
   if (req.path.endsWith('/activity')) {
-    const data = await createActivityData(videoComment.url, videoComment.Account.Actor, videoCommentObject, undefined, audience)
+    const data = createActivityData(videoComment.url, videoComment.Account.Actor, videoCommentObject, audience)
     return activityPubResponse(activityPubContextify(data), res)
   }
 

@@ -1,4 +1,5 @@
 const helpers = require('./helpers')
+const path = require('path')
 
 const CheckerPlugin = require('awesome-typescript-loader').CheckerPlugin
 const HtmlWebpackPlugin = require('html-webpack-plugin')
@@ -13,7 +14,9 @@ module.exports = function () {
 
   const configuration = {
     entry: {
-      'video-embed': './src/standalone/videos/embed.ts'
+      'video-embed': './src/standalone/videos/embed.ts',
+      'player': './src/standalone/player/player.ts',
+      'test-embed': './src/standalone/videos/test-embed.ts'
     },
 
     resolve: {
@@ -24,7 +27,11 @@ module.exports = function () {
        */
       extensions: [ '.ts', '.js', '.json', '.scss' ],
 
-      modules: [ helpers.root('src'), helpers.root('node_modules') ]
+      modules: [ helpers.root('src'), helpers.root('node_modules') ],
+
+      alias: {
+        'video.js$': path.resolve('node_modules/video.js/dist/alt/video.core.js')
+      }
     },
 
     output: {
@@ -34,6 +41,8 @@ module.exports = function () {
       chunkFilename: '[id].chunk.js',
       publicPath: '/client/standalone/videos/'
     },
+
+    // devtool: 'source-map',
 
     module: {
 
@@ -82,7 +91,8 @@ module.exports = function () {
           use: 'raw-loader',
           exclude: [
             helpers.root('src/index.html'),
-            helpers.root('src/standalone/videos/embed.html')
+            helpers.root('src/standalone/videos/embed.html'),
+            helpers.root('src/standalone/videos/test-embed.html')
           ]
         },
 
@@ -103,7 +113,10 @@ module.exports = function () {
       }),
 
       new PurifyCSSPlugin({
-        paths: [ helpers.root('src/standalone/videos/embed.ts') ],
+        paths: [ 
+          helpers.root('src/standalone/videos/embed.ts'),
+          helpers.root('src/standalone/videos/test-embed.html') 
+        ],
         purifyOptions: {
           minify: true,
           whitelist: [ '*vjs*', '*video-js*' ]
@@ -117,7 +130,17 @@ module.exports = function () {
         filename: 'embed.html',
         title: 'PeerTube',
         chunksSortMode: 'dependency',
-        inject: 'body'
+        inject: 'body',
+        chunks: ['video-embed']
+      }),
+
+      new HtmlWebpackPlugin({
+        template: '!!html-loader!src/standalone/videos/test-embed.html',
+        filename: 'test-embed.html',
+        title: 'PeerTube',
+        chunksSortMode: 'dependency',
+        inject: 'body',
+        chunks: ['test-embed']
       }),
 
       /**
